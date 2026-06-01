@@ -26,7 +26,7 @@ createRoot(document.getElementById("root")).render(
 );
 ```
 
-A `⚡ SSE` toggle button appears in the bottom-right corner. Click it to open the panel. The default keyboard shortcut `Alt+D` also toggles it.
+A `⚡ SSE` toggle button appears in the bottom-right corner. Click it to open the panel, or **drag it** anywhere — its position is remembered. The default keyboard shortcut `Alt+D` also toggles it (matched by physical key, so it works on macOS where Option rewrites the character). Press `Esc` to close the panel.
 
 ## Production builds
 
@@ -49,6 +49,7 @@ Pass `enabled={false}` (or a condition) to disable the devtools entirely. When d
 | `hideToggleButton` | `boolean`                         | `false`          | Hide the floating `⚡ SSE` button                         |
 | `toggleShortcut`   | `string`                          | `"alt+d"`        | Keyboard shortcut to open/close — e.g. `"ctrl+shift+d"`   |
 | `maxEvents`        | `number`                          | `100`            | Maximum events kept per connection in the log             |
+| `zIndex`           | `number`                          | `99999`          | Stacking order of the panel and toggle button             |
 
 ### Shortcut format
 
@@ -58,13 +59,21 @@ Set `toggleShortcut=""` to disable the shortcut entirely.
 
 ## Panel features
 
-- **Connection list** — all active SSE connections with a live status indicator (animated dot while connecting/reconnecting)
+- **Connection list** — all active SSE connections with a live status indicator (animated dot while connecting/reconnecting); same-path connections stay distinguishable by query string
 - **Detail pane** — URL, status, connected-at timestamp, connection key, error box
-- **Event log** — last `maxEvents` events per connection with timestamp, event-type badge, and expandable payload; filter by type or data content
+- **Metrics** — events received, events/sec, uptime, reconnect count, time since last event, events in log
+- **Event log** — last `maxEvents` events per connection with timestamp, event-type badge, and expandable payload
+- **Filter** — by type or data content; click a type badge to filter to that type
+- **Pause** — freeze the log to inspect while the stream keeps running (shows how many arrived while paused)
+- **Copy / Export** — copy a single payload, or export the whole log as JSON
 - **All events captured** — uses `subscribeAnyEvent` internally, so events with no declared handler are visible too
 - **Actions** — Connect / Disconnect buttons per connection; Clear log button
 - **Auto-scroll** — follows new events; pauses when you scroll up
-- **Resizable** — drag the top edge of the panel to resize
+- **Resizable** — drag the grip at the top of the panel (works with touch); the height is remembered
+- **Theme** — Auto / Light / Dark, remembered across reloads
+- **Toggle button** — shows the worst connection status at a glance and is draggable
+- **Accessible** — keyboard-navigable connection list, `Esc` to close, ARIA labels
+- **Remembers** — open state, panel height, theme, and toggle-button position persist via `localStorage`
 
 ## More Documentation
 

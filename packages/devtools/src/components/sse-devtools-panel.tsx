@@ -7,6 +7,7 @@ import {
 } from "react";
 import type { RegistrySnapshot } from "../registry/types";
 import { C, GLOBAL_STYLES } from "../theme/tokens";
+import { loadSettings, patchSettings, type ThemePreference } from "../lib/persistence";
 import { ConnectionList } from "./connection-list";
 import { DetailPane, EmptyDetail } from "./detail-pane";
 import { PanelHeader } from "./panel-header";
@@ -16,9 +17,7 @@ const MIN_HEIGHT = 160;
 const MAX_HEIGHT_RATIO = 0.92;
 const PANEL_INSET = 16;
 const COMPACT_WIDTH = 720;
-const THEME_STORAGE_KEY = "sse-devtools-theme";
 
-type ThemePreference = "system" | "light" | "dark";
 type ResolvedTheme = "light" | "dark";
 
 export type SSEDevtoolsPanelProps = {
@@ -29,6 +28,7 @@ export type SSEDevtoolsPanelProps = {
   readonly buttonPosition: "bottom-left" | "bottom-right";
   readonly panelHeight: number;
   readonly hideToggleButton: boolean;
+  readonly zIndex: number;
 };
 
 export function SSEDevtoolsPanel({
@@ -38,14 +38,18 @@ export function SSEDevtoolsPanel({
   onToggle,
   buttonPosition,
   panelHeight,
-  hideToggleButton
+  hideToggleButton,
+  zIndex
 }: SSEDevtoolsPanelProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [height, setHeight] = useState(panelHeight);
-  const [themePreference, setThemePreference] = useState<ThemePreference>(readThemePreference);
+  const [height, setHeight] = useState(() => loadSettings().height ?? panelHeight);
+  const [themePreference, setThemePreference] = useState<ThemePreference>(
+    () => loadSettings().theme ?? "system"
+  );
   const [systemTheme, setSystemTheme] = useState<ResolvedTheme>(readSystemTheme);
   const [isCompact, setIsCompact] = useState(readIsCompact);
   const dragging = useRef(false);
+  const heightRef = useRef(height);
   const theme = themePreference === "system" ? systemTheme : themePreference;
 
   useEffect(() => {
@@ -75,7 +79,11 @@ export function SSEDevtoolsPanel({
 
     const onResize = () => {
       setIsCompact(readIsCompact());
-      setHeight((currentHeight) => clampHeight(currentHeight));
+      setHeight((currentHeight) => {
+        const clamped = clampHeight(currentHeight);
+        heightRef.current = clamped;
+        return clamped;
+      });
     };
     window.addEventListener("resize", onResize);
     window.visualViewport?.addEventListener("resize", onResize);
@@ -86,31 +94,47 @@ export function SSEDevtoolsPanel({
     };
   }, []);
 
+  useEffect(() => {
+    if (!isOpen || typeof window === "undefined") return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        onToggle();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [isOpen, onToggle]);
+
   const onResizeStart = useCallback((e: ReactPointerEvent<HTMLDivElement>) => {
     e.preventDefault();
     dragging.current = true;
-    e.currentTarget.setPointerCapture(e.pointerId);
+    const handle = e.currentTarget;
+    handle.setPointerCapture(e.pointerId);
 
     const onMove = (ev: PointerEvent) => {
       if (!dragging.current) return;
-      setHeight(clampHeight(getViewportHeight() - ev.clientY));
+      const next = clampHeight(getViewportHeight() - ev.clientY);
+      heightRef.current = next;
+      setHeight(next);
     };
 
     const onUp = () => {
       dragging.current = false;
-      window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", onUp);
-      window.removeEventListener("pointercancel", onUp);
+      handle.removeEventListener("pointermove", onMove);
+      handle.removeEventListener("pointerup", onUp);
+      handle.removeEventListener("pointercancel", onUp);
+      patchSettings({ height: heightRef.current });
     };
 
-    window.addEventListener("pointermove", onMove);
-    window.addEventListener("pointerup", onUp);
-    window.addEventListener("pointercancel", onUp);
+    handle.addEventListener("pointermove", onMove);
+    handle.addEventListener("pointerup", onUp);
+    handle.addEventListener("pointercancel", onUp);
   }, []);
 
-  const setTheme = useCallback((nextTheme: ResolvedTheme) => {
-    setThemePreference(nextTheme);
-    writeThemePreference(nextTheme);
+  const setTheme = useCallback((next: ThemePreference) => {
+    setThemePreference(next);
+    patchSettings({ theme: next });
   }, []);
 
   const selectedRecord = selectedId != null ? (clients.get(selectedId) ?? null) : null;
@@ -125,9 +149,10 @@ export function SSEDevtoolsPanel({
 
       {!isOpen && !hideToggleButton && (
         <ToggleButton
-          connectionCount={clients.size}
+          clients={clients}
           position={buttonPosition}
           theme={theme}
+          zIndex={zIndex}
           onClick={onToggle}
         />
       )}
@@ -136,13 +161,15 @@ export function SSEDevtoolsPanel({
         <div
           className="sse-dt"
           data-theme={theme}
+          role="dialog"
+          aria-label="SSE DevTools"
           style={{
             position: "fixed",
             bottom: isCompact ? 8 : PANEL_INSET,
             left: isCompact ? 8 : PANEL_INSET,
             right: isCompact ? 8 : PANEL_INSET,
             height: clampHeight(height),
-            zIndex: 99999,
+            zIndex,
             display: "flex",
             flexDirection: "column",
             background: C.bg,
@@ -157,19 +184,36 @@ export function SSEDevtoolsPanel({
           }}
         >
           <div
+            className="sse-dt-resize-handle"
             onPointerDown={onResizeStart}
+            role="separator"
+            aria-label="Resize panel"
+            title="Drag to resize"
             style={{
               position: "absolute",
               top: 0,
-              left: 16,
-              right: 16,
-              height: 6,
+              left: 0,
+              right: 0,
+              height: 14,
               cursor: "ns-resize",
-              zIndex: 1,
-              borderTop: "2px solid transparent",
+              zIndex: 2,
+              display: "flex",
+              alignItems: "flex-start",
+              justifyContent: "center",
               touchAction: "none"
             }}
-          />
+          >
+            <span
+              aria-hidden
+              style={{
+                marginTop: 4,
+                width: 36,
+                height: 4,
+                borderRadius: 999,
+                background: C.border
+              }}
+            />
+          </div>
 
           <PanelHeader connectionCount={clients.size} isCompact={isCompact} onClose={onToggle} />
 
@@ -187,7 +231,7 @@ export function SSEDevtoolsPanel({
               clients={clients}
               selectedId={selectedId}
               isCompact={isCompact}
-              theme={theme}
+              themePreference={themePreference}
               onSelect={setSelectedId}
               onSetTheme={setTheme}
             />
@@ -211,13 +255,6 @@ export function SSEDevtoolsPanel({
   );
 }
 
-function readThemePreference(): ThemePreference {
-  if (typeof window === "undefined") return "system";
-
-  const storedTheme = window.localStorage.getItem(THEME_STORAGE_KEY);
-  return isThemePreference(storedTheme) ? storedTheme : "system";
-}
-
 function readSystemTheme(): ResolvedTheme {
   if (typeof window === "undefined") return "light";
   return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
@@ -236,13 +273,4 @@ function clampHeight(height: number): number {
 function getViewportHeight(): number {
   if (typeof window === "undefined") return 0;
   return window.visualViewport?.height ?? window.innerHeight;
-}
-
-function writeThemePreference(theme: Exclude<ThemePreference, "system">): void {
-  if (typeof window === "undefined") return;
-  window.localStorage.setItem(THEME_STORAGE_KEY, theme);
-}
-
-function isThemePreference(value: string | null): value is ThemePreference {
-  return value === "system" || value === "light" || value === "dark";
 }
