@@ -110,6 +110,26 @@ describe("parseSSEChunk - comment and empty event edge cases", () => {
   });
 });
 
+describe("parseSSEChunk - id field edge cases", () => {
+  it("ignores id field containing a NULL character per SSE spec", () => {
+    expect(parseSSEChunk("id: abc\x00def\ndata: hello\n\n")).toEqual([
+      { event: "message", data: "hello", id: undefined, retry: undefined }
+    ]);
+  });
+
+  it("ignores id field that is only a NULL character", () => {
+    expect(parseSSEChunk("id: \x00\ndata: hello\n\n")).toEqual([
+      { event: "message", data: "hello", id: undefined, retry: undefined }
+    ]);
+  });
+
+  it("accepts id field with empty value", () => {
+    expect(parseSSEChunk("id:\ndata: hello\n\n")).toEqual([
+      { event: "message", data: "hello", id: "", retry: undefined }
+    ]);
+  });
+});
+
 describe("parseSSEChunk - retry field edge cases", () => {
   it("ignores retry with non-digit characters", () => {
     expect(parseSSEChunk("retry: abc\ndata: payload\n\n")).toEqual([
@@ -119,6 +139,13 @@ describe("parseSSEChunk - retry field edge cases", () => {
 
   it("ignores retry with scientific notation", () => {
     expect(parseSSEChunk("retry: 1e3\ndata: payload\n\n")).toEqual([
+      { event: "message", data: "payload", id: undefined, retry: undefined }
+    ]);
+  });
+
+  it("ignores retry containing non-ASCII digits (e.g. Arabic-Indic)", () => {
+    // U+0660–U+0669 are Arabic-Indic digits; \d matches them but SSE spec requires ASCII only
+    expect(parseSSEChunk("retry: ٠1000\ndata: payload\n\n")).toEqual([
       { event: "message", data: "payload", id: undefined, retry: undefined }
     ]);
   });

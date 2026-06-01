@@ -66,6 +66,10 @@ Set `toggleShortcut=""` to disable the shortcut entirely.
 - **Auto-scroll** — follows new events; pauses when you scroll up
 - **Resizable** — drag the top edge of the panel to resize
 
+## More Documentation
+
+Full guide: https://github.com/FlameFront-end/sse-runtime#readme
+
 ## License
 
 MIT

@@ -100,7 +100,9 @@ export function createSSEParser(): SSEParser {
     }
 
     if (field === "id") {
-      id = value;
+      if (!value.includes("\0")) {
+        id = value;
+      }
     }
 
     if (field === "retry") {
@@ -146,7 +148,7 @@ function normalizeLineEndings(value: string): string {
 }
 
 function parseRetry(value: string): number | undefined {
-  if (!/^\d+$/.test(value)) {
+  if (!/^[0-9]+$/.test(value)) {
     return undefined;
   }
 

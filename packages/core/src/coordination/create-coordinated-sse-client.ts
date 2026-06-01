@@ -49,6 +49,9 @@ export function createCoordinatedSSEClient<Events extends EventMap>(
   let engine: SSEClient<Events> | null = null;
   let engineSubscriptions: Array<() => void> = [];
   let isActive = false;
+  let followerChain: Promise<void> = Promise.resolve();
+  let followerGeneration = 0;
+  let lastEventId: string | undefined;
 
   return {
     connect,
@@ -67,7 +70,11 @@ export function createCoordinatedSSEClient<Events extends EventMap>(
       const anyHandler = handler as unknown as AnyHandler;
       handlers.add(anyHandler);
       return () => {
-        subscriberRegistry.get(key)?.delete(anyHandler);
+        const set = subscriberRegistry.get(key);
+        if (set) {
+          set.delete(anyHandler);
+          if (set.size === 0) subscriberRegistry.delete(key);
+        }
       };
     },
 
@@ -85,11 +92,13 @@ export function createCoordinatedSSEClient<Events extends EventMap>(
   };
 
   async function connect(): Promise<void> {
-    if (isActive) {
+    if (options.enabled === false || isActive) {
       return;
     }
 
     isActive = true;
+    followerGeneration += 1;
+    followerChain = Promise.resolve();
     channel = backend.createChannel(channelName);
     unsubscribeChannel = channel.subscribe(handleMessage);
 
@@ -114,6 +123,7 @@ export function createCoordinatedSSEClient<Events extends EventMap>(
 
   function disconnect(): void {
     isActive = false;
+    followerGeneration += 1;
     teardownEngine();
     leadershipController?.abort();
     leadershipController = null;
@@ -128,19 +138,31 @@ export function createCoordinatedSSEClient<Events extends EventMap>(
     callDiagnostic(options.diagnostics?.onCoordinationRoleChange, { role: "leader" });
     const leaderEngine = createLocalSSEClient(options, {
       ...dependencies,
-      onStreamEvent: (event) => {
+      initialLastEventId: lastEventId,
+      onStreamEvent: async (event) => {
+        if (event.id !== undefined) {
+          lastEventId = event.id;
+        }
+
         channel?.post({ type: "event", event });
-        void callSubscribers(event);
+        await callSubscribers(event);
       }
     });
     engine = leaderEngine;
 
+    let forwardStatus = false;
     engineSubscriptions.push(
       leaderEngine.subscribeStatus((status) => {
+        if (!forwardStatus) {
+          return;
+        }
+
         state.setStatus(status);
         channel?.post({ type: "status", status });
       })
     );
+    forwardStatus = true;
+
     engineSubscriptions.push(
       leaderEngine.subscribeError((error) => {
         state.setError(error);
@@ -183,27 +205,48 @@ export function createCoordinatedSSEClient<Events extends EventMap>(
 
   function applyRemoteMessage(message: CoordinationMessage): void {
     if (message.type === "status") {
-      state.setStatus(message.status);
+      enqueueFollowerTask(() => state.setStatus(message.status));
 
       return;
     }
 
     if (message.type === "error") {
-      state.setError(message.error);
+      enqueueFollowerTask(() => state.setError(message.error));
 
       return;
     }
 
     if (message.type === "event") {
-      void dispatchSSEEvent({ event: message.event, events: options.events }).then(
-        (handlerError) => {
-          if (handlerError) {
-            state.setError(handlerError);
-          }
+      const event = message.event;
+
+      if (event.id !== undefined) {
+        lastEventId = event.id;
+      }
+
+      enqueueFollowerTask(async () => {
+        const handlerError = await dispatchSSEEvent({ event, events: options.events });
+
+        if (handlerError) {
+          state.setError(handlerError);
         }
-      );
-      void callSubscribers(message.event);
+
+        await callSubscribers(event);
+      });
     }
+  }
+
+  function enqueueFollowerTask(task: () => Promise<void> | void): void {
+    const taskGeneration = followerGeneration;
+
+    followerChain = followerChain
+      .then(() => {
+        if (!isActive || taskGeneration !== followerGeneration) {
+          return undefined;
+        }
+
+        return task();
+      })
+      .catch(() => undefined);
   }
 
   async function callSubscribers(event: ParsedSSEEvent): Promise<void> {

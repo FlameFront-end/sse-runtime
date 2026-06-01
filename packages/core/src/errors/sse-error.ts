@@ -41,7 +41,8 @@ function isSSEError(value: unknown): value is SSEError {
     typeof value === "object" &&
     value !== null &&
     hasSSEErrorKind(value) &&
-    "message" in value
+    "message" in value &&
+    typeof (value as { readonly message: unknown }).message === "string"
   );
 }
 

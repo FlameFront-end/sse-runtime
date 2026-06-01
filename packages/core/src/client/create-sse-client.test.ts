@@ -32,6 +32,23 @@ describe("createSSEClient", () => {
     client.disconnect();
   });
 
+  it("does not open a connection when disabled", async () => {
+    const transport = vi.fn(async () => new Response(createControlledStream().readable));
+    const client = createSSEClient<ChatEvents>(
+      {
+        key: ["chat"],
+        url: "/stream",
+        enabled: false
+      },
+      { transport }
+    );
+
+    await client.connect();
+
+    expect(transport).not.toHaveBeenCalled();
+    expect(client.getStatus()).toBe("idle");
+  });
+
   it("dispatches parsed JSON payloads to event handlers", async () => {
     const stream = createControlledStream();
     const handleMessage = vi.fn();
