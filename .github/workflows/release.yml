@@ -1,0 +1,50 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+concurrency: ${{ github.workflow }}-${{ github.ref }}
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # create release commits, tags, and GitHub releases
+      pull-requests: write # open/update the "Version Packages" PR
+      id-token: write # npm Trusted Publishing (OIDC) — no NPM_TOKEN needed
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+
+      # npm Trusted Publishing (OIDC) requires npm CLI >= 11.5.1; Node 22 ships
+      # an older npm, so upgrade before publishing.
+      - name: Upgrade npm for OIDC publishing
+        run: npm install -g npm@latest
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # When changesets exist on main, this opens/updates a "Version Packages" PR.
+      # When that PR is merged (versions bumped, no changesets left), it runs the
+      # publish command, creating git tags and GitHub releases. Publishing uses
+      # OIDC Trusted Publishing — no long-lived NPM_TOKEN.
+      - name: Create release PR or publish
+        uses: changesets/action@v1
+        with:
+          version: pnpm changeset version
+          publish: pnpm release
+          commit: "chore: release"
+          title: "chore: release"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
