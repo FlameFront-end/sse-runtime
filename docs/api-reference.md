@@ -28,6 +28,8 @@ const client = createSSEClient<MyEvents>({
 | `coordination` | `CoordinationOptions`                                                                       | —        | Single-tab deduplication across browser tabs            |
 | `heartbeat`    | `HeartbeatOptions`                                                                          | —        | Abort and reconnect when stream goes silent             |
 | `diagnostics`  | `DiagnosticsOptions`                                                                        | —        | Structured callbacks for observability                  |
+| `retry`        | `RetryPolicyOptions`                                                                        | —        | Per-error retry classification and custom delay         |
+| `openTimeout`  | `number`                                                                                    | —        | Max ms to wait for the HTTP response before aborting    |
 
 #### `ReconnectOptions`
 
@@ -37,6 +39,25 @@ const client = createSSEClient<MyEvents>({
 | `maxRetries` | `number`  | `Infinity` | Maximum number of reconnect attempts |
 | `minDelay`   | `number`  | `1000`     | Minimum backoff delay in ms          |
 | `maxDelay`   | `number`  | `30000`    | Maximum backoff delay in ms          |
+
+#### `RetryPolicyOptions`
+
+Fine-grained control over which errors trigger a reconnect and how long to wait. When provided alongside `reconnect`, `maxRetries` is always enforced as a hard cap first; `shouldRetry` acts as a secondary per-error filter within that cap.
+
+| Field         | Type                            | Description                                                     |
+| ------------- | ------------------------------- | --------------------------------------------------------------- |
+| `shouldRetry` | `(error: SSEError) => boolean`  | Return `false` to treat this error as terminal, `true` to retry |
+| `getDelay`    | `(ctx: RetryContext) => number` | Return the delay in ms for the next attempt                     |
+
+`RetryContext`:
+
+```ts
+type RetryContext = {
+  attempt: number; // reconnect attempt counter (1-based)
+  error: SSEError; // error that triggered the reconnect
+  serverRetry?: number; // value from the server's last `retry:` field
+};
+```
 
 #### `AuthOptions`
 
@@ -64,12 +85,42 @@ When enabled, one tab opens the real SSE connection (the leader) and broadcasts 
 
 All callbacks are non-critical — errors thrown inside them are silently swallowed and do not affect the stream.
 
-| Field                      | Type                                                                  | Description                                      |
-| -------------------------- | --------------------------------------------------------------------- | ------------------------------------------------ |
-| `onAttempt`                | `(info: { attempt: number; url: string }) => void`                    | Fires at the start of each connection attempt    |
-| `onReconnectScheduled`     | `(info: { attempt: number; delay: number; error: SSEError }) => void` | Fires when a reconnect is queued after a failure |
-| `onAuthRefresh`            | `(info: { error: SSEError }) => void`                                 | Fires when a 401 triggers an auth refresh        |
-| `onCoordinationRoleChange` | `(info: { role: "leader" \| "follower" }) => void`                    | Fires when the tab's coordination role changes   |
+| Field                      | Type                                                                  | Description                                                       |
+| -------------------------- | --------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| `onAttempt`                | `(info: { attempt: number; url: string }) => void`                    | Fires at the start of each connection attempt                     |
+| `onOpen`                   | `(info: { url: string }) => void`                                     | Fires when the HTTP response is accepted and the stream starts    |
+| `onDisconnect`             | `(info: DisconnectDiagnosticInfo) => void`                            | Fires when the connection closes (see `DisconnectReason` below)   |
+| `onReconnectScheduled`     | `(info: { attempt: number; delay: number; error: SSEError }) => void` | Fires when a reconnect is queued after a failure                  |
+| `onAuthRefresh`            | `(info: { error: SSEError }) => void`                                 | Fires when a 401 triggers an auth refresh                         |
+| `onCoordinationRoleChange` | `(info: { role: "leader" \| "follower" }) => void`                    | Fires when the tab's coordination role changes                    |
+| `onRawEvent`               | `(info: RawEventDiagnosticInfo) => void`                              | Fires for every parsed SSE event before handlers run              |
+| `onParseError`             | `(info: { error: unknown; eventName: string }) => void`               | Fires when a JSON payload for a named subscriber cannot be parsed |
+
+`DisconnectDiagnosticInfo`:
+
+```ts
+type DisconnectDiagnosticInfo = {
+  url: string;
+  reason: "manual" | "error" | "stream-ended";
+};
+```
+
+- `"manual"` — `disconnect()` was called explicitly.
+- `"error"` — a connection-level failure reached the terminal state (no more retries).
+- `"stream-ended"` — the server closed the stream, no more retries scheduled.
+
+`RawEventDiagnosticInfo`:
+
+```ts
+type RawEventDiagnosticInfo = {
+  event: string; // event name ("message" if omitted by server)
+  data: string; // raw data string before JSON parsing
+  id: string | undefined;
+  retry: number | undefined;
+  timestamp: number; // Date.now() at dispatch time
+  connectionKey: readonly string[];
+};
+```
 
 ---
 
@@ -77,16 +128,17 @@ All callbacks are non-critical — errors thrown inside them are silently swallo
 
 Returned by `createSSEClient`.
 
-| Method              | Signature                                                                                                      | Description                                                                                                                       |
-| ------------------- | -------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| `connect`           | `() => Promise<void>`                                                                                          | Open the connection. Resolves once the HTTP response is accepted. Idempotent — safe to call when already open.                    |
-| `disconnect`        | `() => void`                                                                                                   | Close the connection and stop all reconnect timers                                                                                |
-| `getStatus`         | `() => SSEConnectionStatus`                                                                                    | Synchronous status snapshot                                                                                                       |
-| `getError`          | `() => SSEError \| null`                                                                                       | Last error, or null                                                                                                               |
-| `subscribeStatus`   | `(listener: SSEStatusListener) => () => void`                                                                  | Subscribe to status changes. Returns an unsubscribe function.                                                                     |
-| `subscribeError`    | `(listener: SSEErrorListener) => () => void`                                                                   | Subscribe to error changes. Returns an unsubscribe function.                                                                      |
-| `subscribeEvent`    | `<N extends keyof Events>(eventName: N, handler: (payload: Events[N]) => void \| Promise<void>) => () => void` | Subscribe to a named event at runtime. Returns an unsubscribe function.                                                           |
-| `subscribeAnyEvent` | `(handler: (event: SSEEventEnvelope) => void \| Promise<void>) => () => void`                                  | Observe every event regardless of name. Receives `{ type, data }`; handler errors are swallowed. Returns an unsubscribe function. |
+| Method              | Signature                                                                                                      | Description                                                                                                                                                      |
+| ------------------- | -------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `connect`           | `() => Promise<void>`                                                                                          | Open the connection. Resolves once the HTTP response is accepted. Idempotent — safe to call when already open.                                                   |
+| `disconnect`        | `() => void`                                                                                                   | Close the connection and stop all reconnect timers.                                                                                                              |
+| `ensureOpen`        | `(options?: { timeout?: number }) => Promise<boolean>`                                                         | Wait until the connection is open. Starts connecting if needed. Resolves `true` when open, `false` on terminal failure, rejects if the optional timeout expires. |
+| `getStatus`         | `() => SSEConnectionStatus`                                                                                    | Synchronous status snapshot.                                                                                                                                     |
+| `getError`          | `() => SSEError \| null`                                                                                       | Last error, or null.                                                                                                                                             |
+| `subscribeStatus`   | `(listener: SSEStatusListener) => () => void`                                                                  | Subscribe to status changes. Returns an unsubscribe function.                                                                                                    |
+| `subscribeError`    | `(listener: SSEErrorListener) => () => void`                                                                   | Subscribe to error changes. Returns an unsubscribe function.                                                                                                     |
+| `subscribeEvent`    | `<N extends keyof Events>(eventName: N, handler: (payload: Events[N]) => void \| Promise<void>) => () => void` | Subscribe to a named event at runtime. Returns an unsubscribe function.                                                                                          |
+| `subscribeAnyEvent` | `(handler: (event: SSEEventEnvelope) => void \| Promise<void>) => () => void`                                  | Observe every event regardless of name. Receives `{ type, data }`; handler errors are swallowed. Returns an unsubscribe function.                                |
 
 #### `SSEConnectionStatus`
 

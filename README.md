@@ -26,10 +26,14 @@ const client = createSSEClient<ChatEvents>({
 
 - **Typed events** — declare an event map once; handlers and payloads are fully inferred.
 - **Auth that works** — static or async `headers`, plus a `401` refresh-and-retry hook.
-- **Resilient reconnects** — jittered exponential backoff, retry caps, honors server `retry`.
+- **Resilient reconnects** — jittered exponential backoff, `maxRetries` cap, honors server `retry:` field.
+- **Custom retry policy** — `shouldRetry` predicate and `getDelay` for per-error classification (e.g. terminal 4xx, special handling for 429).
+- **Open timeout** — abort the HTTP connection attempt if the server takes too long to respond.
+- **Connection readiness** — `ensureOpen({ timeout })` resolves when the stream is ready; safe to call before any action that depends on an active connection.
 - **Seamless resumption** — tracks `Last-Event-ID` and resumes the stream on reconnect.
 - **Single-tab coordination** — one real connection per browser, shared to every tab via Web Locks + `BroadcastChannel`, with transparent failover.
 - **Observable state** — `idle / connecting / open / reconnecting / error / closed` plus structured errors.
+- **Rich diagnostics** — `onOpen`, `onDisconnect`, `onRawEvent`, `onParseError`, and more for logging and debugging.
 - **Devtools** — drop-in panel to inspect live connections, event logs, and status while developing.
 - **Zero runtime dependencies** — framework-agnostic core; a thin React hook on top.
 

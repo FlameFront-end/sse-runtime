@@ -1,6 +1,7 @@
 import { createTransportError } from "../errors/sse-error";
 import { createSSEParser, type ParsedSSEEvent } from "../parser/parse-sse-chunk";
 import type { SSEError } from "../types/public";
+import { combineSignals } from "../utils/combine-signals";
 
 export type ReadSSEStreamOptions = {
   readonly stream: ReadableStream<Uint8Array>;
@@ -99,29 +100,6 @@ async function readChunk(
   readPromise.catch(() => undefined);
 
   return Promise.race([readPromise, abortPromise]);
-}
-
-function combineSignals(first: AbortSignal, second: AbortSignal): AbortSignal {
-  if (typeof AbortSignal.any === "function") {
-    return AbortSignal.any([first, second]);
-  }
-
-  const controller = new AbortController();
-
-  const forwardAbort = (source: AbortSignal): void => {
-    controller.abort(source.reason);
-  };
-
-  if (first.aborted) {
-    forwardAbort(first);
-  } else if (second.aborted) {
-    forwardAbort(second);
-  } else {
-    first.addEventListener("abort", () => forwardAbort(first), { once: true });
-    second.addEventListener("abort", () => forwardAbort(second), { once: true });
-  }
-
-  return controller.signal;
 }
 
 async function flushDecoder(

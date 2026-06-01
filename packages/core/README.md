@@ -54,10 +54,13 @@ the raw string payload.
 
 - `connect(): Promise<void>`
 - `disconnect(): void`
+- `ensureOpen(options?: { timeout?: number }): Promise<boolean>` — wait until the stream is open; starts connecting if needed
 - `getStatus(): SSEConnectionStatus`
 - `getError(): SSEError | null`
 - `subscribeStatus(listener): () => void`
 - `subscribeError(listener): () => void`
+- `subscribeEvent(eventName, handler): () => void`
+- `subscribeAnyEvent(handler): () => void`
 
 ## Core Options
 
@@ -66,10 +69,14 @@ the raw string payload.
 - `enabled`: set to `false` to start idle.
 - `headers`: static or async headers, resolved before each connection attempt.
 - `credentials`: passed to `fetch`, for example `"include"`.
-- `events`: typed event handlers.
+- `events`: typed event handlers registered at creation time.
 - `reconnect`: backoff and retry limits.
 - `auth`: `401` refresh callback.
 - `coordination`: optional single-tab coordination.
+- `heartbeat`: reconnect when the stream is silent for too long.
+- `openTimeout`: abort the connection attempt if the server does not respond within this many ms.
+- `retry`: custom per-error `shouldRetry` predicate and `getDelay` function.
+- `diagnostics`: structured observability callbacks (`onOpen`, `onDisconnect`, `onRawEvent`, etc.).
 
 ## Reconnect And Resumption
 

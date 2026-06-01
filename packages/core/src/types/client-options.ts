@@ -4,6 +4,7 @@ import type { DiagnosticsOptions } from "./diagnostics";
 import type { EventHandler, EventMap } from "./events";
 import type { HeartbeatOptions } from "./heartbeat";
 import type { ReconnectOptions } from "./reconnect";
+import type { RetryPolicyOptions } from "./retry";
 
 export type SSEClientOptions<Events extends EventMap> = {
   readonly key: readonly string[];
@@ -21,4 +22,6 @@ export type SSEClientOptions<Events extends EventMap> = {
   readonly coordination?: CoordinationOptions;
   readonly heartbeat?: HeartbeatOptions;
   readonly diagnostics?: DiagnosticsOptions;
+  readonly retry?: RetryPolicyOptions;
+  readonly openTimeout?: number;
 };
