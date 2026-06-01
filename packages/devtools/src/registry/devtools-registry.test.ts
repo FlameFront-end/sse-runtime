@@ -147,6 +147,59 @@ describe("createDevtoolsRegistry", () => {
     expect([...registry.getSnapshot().values()][0].connectedAt).toBeNull();
   });
 
+  it("seeds connectedAt/firstConnectedAt when the client is already open at registration", async () => {
+    vi.useRealTimers();
+    const registry = createDevtoolsRegistry();
+    const client = createMockClient("open");
+
+    registry.register({ id: "k", url: "/e", client });
+    await flushFrame();
+
+    const record = [...registry.getSnapshot().values()][0];
+    expect(record.connectedAt).toBeGreaterThan(0);
+    expect(record.firstConnectedAt).toBeGreaterThan(0);
+    expect(record.reconnectCount).toBe(0);
+  });
+
+  it("keeps firstConnectedAt and counts reconnects across open/reconnecting cycles", async () => {
+    vi.useRealTimers();
+    const registry = createDevtoolsRegistry();
+    const client = createMockClient("closed");
+
+    registry.register({ id: "k", url: "/e", client });
+    client._setStatus("open");
+    await flushFrame();
+    const first = [...registry.getSnapshot().values()][0].firstConnectedAt;
+    expect(first).toBeGreaterThan(0);
+    expect([...registry.getSnapshot().values()][0].reconnectCount).toBe(0);
+
+    client._setStatus("reconnecting");
+    client._setStatus("open");
+    await flushFrame();
+
+    const record = [...registry.getSnapshot().values()][0];
+    expect(record.firstConnectedAt).toBe(first);
+    expect(record.reconnectCount).toBe(1);
+  });
+
+  it("tracks lastEventAt and resets it on clearEvents", async () => {
+    vi.useRealTimers();
+    const registry = createDevtoolsRegistry();
+    const client = createMockClient("open");
+
+    registry.register({ id: "k", url: "/e", client });
+    expect([...registry.getSnapshot().values()][0].lastEventAt).toBeNull();
+
+    client._emitEvent("ping", 1);
+    await flushFrame();
+    expect([...registry.getSnapshot().values()][0].lastEventAt).toBeGreaterThan(0);
+
+    const id = [...registry.getSnapshot().keys()][0];
+    registry.clearEvents(id);
+    await flushFrame();
+    expect([...registry.getSnapshot().values()][0].lastEventAt).toBeNull();
+  });
+
   it("reflects error changes from the client", async () => {
     const registry = createDevtoolsRegistry();
     const client = createMockClient();

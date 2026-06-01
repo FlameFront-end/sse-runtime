@@ -2,29 +2,42 @@ import { memo, useCallback, useMemo } from "react";
 import type { RegistrySnapshot } from "../registry/types";
 import type { DevtoolsClientRecord } from "../registry/types";
 import { C, S, statusColor, statusLabel } from "../theme/tokens";
-import { urlPath } from "../lib/format";
+import { urlLabel } from "../lib/format";
+import type { ThemePreference } from "../lib/persistence";
 import { StatusDot } from "./status-dot";
 
 type ConnectionListProps = {
   readonly clients: RegistrySnapshot;
   readonly selectedId: string | null;
   readonly isCompact: boolean;
-  readonly theme: "light" | "dark";
+  readonly themePreference: ThemePreference;
   readonly onSelect: (id: string) => void;
-  readonly onSetTheme: (theme: "light" | "dark") => void;
+  readonly onSetTheme: (theme: ThemePreference) => void;
+};
+
+const THEME_CYCLE: Record<ThemePreference, ThemePreference> = {
+  system: "light",
+  light: "dark",
+  dark: "system"
+};
+
+const THEME_LABEL: Record<ThemePreference, string> = {
+  system: "Auto",
+  light: "Light",
+  dark: "Dark"
 };
 
 export const ConnectionList = memo(function ConnectionList({
   clients,
   selectedId,
   isCompact,
-  theme,
+  themePreference,
   onSelect,
   onSetTheme
 }: ConnectionListProps) {
-  const nextTheme = theme === "dark" ? "light" : "dark";
+  const nextTheme = THEME_CYCLE[themePreference];
   const records = useMemo(() => Array.from(clients.values()), [clients]);
-  const setNextTheme = useCallback(() => onSetTheme(nextTheme), [nextTheme, onSetTheme]);
+  const cycleTheme = useCallback(() => onSetTheme(nextTheme), [nextTheme, onSetTheme]);
 
   return (
     <div
@@ -36,6 +49,7 @@ export const ConnectionList = memo(function ConnectionList({
         borderRight: isCompact ? "none" : `1px solid ${C.border}`,
         borderBottom: isCompact ? `1px solid ${C.border}` : undefined,
         overflowY: isCompact ? "hidden" : "auto",
+        overscrollBehavior: "contain",
         display: "flex",
         flexDirection: "column",
         background: C.surface
@@ -57,8 +71,9 @@ export const ConnectionList = memo(function ConnectionList({
         <span>Connections</span>
         <button
           className="sse-dt-soft-button"
-          onClick={setNextTheme}
-          title={`Use ${nextTheme} theme`}
+          onClick={cycleTheme}
+          title={`Theme: ${THEME_LABEL[themePreference]} — click for ${THEME_LABEL[nextTheme]}`}
+          aria-label={`Theme: ${THEME_LABEL[themePreference]}. Switch to ${THEME_LABEL[nextTheme]}`}
           style={{
             background: "transparent",
             border: `1px solid ${C.border}`,
@@ -67,13 +82,12 @@ export const ConnectionList = memo(function ConnectionList({
             cursor: "pointer",
             fontSize: 10,
             fontWeight: 500,
-            height: isCompact ? 22 : 22,
+            height: 22,
             lineHeight: 1,
-            padding: "0 8px",
-            textTransform: "capitalize"
+            padding: "0 8px"
           }}
         >
-          {theme}
+          {THEME_LABEL[themePreference]}
         </button>
       </div>
 
@@ -93,7 +107,8 @@ export const ConnectionList = memo(function ConnectionList({
             flexDirection: isCompact ? "row" : "column",
             minHeight: 0,
             overflowX: isCompact ? "auto" : undefined,
-            overflowY: isCompact ? "hidden" : undefined
+            overflowY: isCompact ? "hidden" : undefined,
+            overscrollBehavior: "contain"
           }}
         >
           {records.map((record) => (
@@ -131,13 +146,17 @@ const ConnectionItem = memo(function ConnectionItem({
   const select = useCallback(() => onSelect(record.id), [record.id, onSelect]);
 
   return (
-    <div
+    <button
+      type="button"
       className="sse-dt-connection-item"
       onClick={select}
       title={record.url}
+      aria-pressed={isSelected}
       style={{
-        width: isCompact ? compactWidth : undefined,
+        width: isCompact ? compactWidth : "100%",
         flex: isCompact ? `0 0 ${compactWidth}` : undefined,
+        textAlign: "left",
+        font: "inherit",
         padding: isCompact ? "8px 12px" : "10px 12px",
         borderRight: isCompact ? `1px solid ${C.borderLight}` : undefined,
         borderTop: "none",
@@ -166,7 +185,7 @@ const ConnectionItem = memo(function ConnectionItem({
             ...S.ellipsis
           }}
         >
-          {urlPath(record.url)}
+          {urlLabel(record.url)}
         </span>
       </div>
       <div style={{ display: "flex", justifyContent: "space-between", paddingLeft: 14 }}>
@@ -177,6 +196,6 @@ const ConnectionItem = memo(function ConnectionItem({
           {record.totalEvents} evt
         </span>
       </div>
-    </div>
+    </button>
   );
 });

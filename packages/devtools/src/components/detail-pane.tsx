@@ -1,8 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { DevtoolsClientRecord } from "../registry/types";
-import { MAX_EVENTS_LABEL } from "../lib/format";
+import type { DevtoolsClientRecord, DevtoolsEventEntry } from "../registry/types";
 import { C, S, statusColor, statusLabel } from "../theme/tokens";
-import { fmtData, fmtTime } from "../lib/format";
+import { fmtAgo, fmtData, fmtDuration, fmtTime } from "../lib/format";
 import { Btn } from "./btn";
 import { EventRow } from "./event-row";
 import { StatusDot } from "./status-dot";
@@ -13,6 +12,8 @@ type DetailPaneProps = {
   readonly onClear: () => void;
 };
 
+const RATE_WINDOW_MS = 5000;
+
 export const DetailPane = memo(function DetailPane({
   record,
   isCompact,
@@ -20,30 +21,63 @@ export const DetailPane = memo(function DetailPane({
 }: DetailPaneProps) {
   const listRef = useRef<HTMLDivElement>(null);
   const prevLenRef = useRef(record.events.length);
+  const frozenRef = useRef<readonly DevtoolsEventEntry[]>(record.events);
+  const frozenTotalRef = useRef(record.totalEvents);
   const [autoScroll, setAutoScroll] = useState(true);
+  const [paused, setPaused] = useState(false);
   const [query, setQuery] = useState("");
+  const now = useNow(1000);
+
+  if (!paused) {
+    frozenRef.current = record.events;
+    frozenTotalRef.current = record.totalEvents;
+  }
+  const sourceEvents = paused ? frozenRef.current : record.events;
+  const bufferedWhilePaused = paused ? record.totalEvents - frozenTotalRef.current : 0;
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return q
-      ? record.events.filter(
+      ? sourceEvents.filter(
           (e) => e.type.toLowerCase().includes(q) || fmtData(e.data).toLowerCase().includes(q)
         )
-      : record.events;
-  }, [query, record.events]);
+      : sourceEvents;
+  }, [query, sourceEvents]);
 
   useEffect(() => {
+    if (paused) return;
     if (autoScroll && record.events.length !== prevLenRef.current && listRef.current) {
       listRef.current.scrollTop = listRef.current.scrollHeight;
     }
     prevLenRef.current = record.events.length;
-  }, [record.events.length, autoScroll]);
+  }, [record.events.length, autoScroll, paused]);
 
   const handleScroll = useCallback(() => {
     if (!listRef.current) return;
     const { scrollTop, scrollHeight, clientHeight } = listRef.current;
     setAutoScroll(scrollTop + clientHeight >= scrollHeight - 10);
   }, []);
+
+  const togglePause = useCallback(() => setPaused((p) => !p), []);
+  const filterByType = useCallback((type: string) => setQuery(type), []);
+  const exportLog = useCallback(() => exportEvents(record), [record]);
+
+  const eventsPerSec = useMemo(() => {
+    if (record.lastEventAt === null) return 0;
+    const since = now - RATE_WINDOW_MS;
+    let count = 0;
+    for (const e of record.events) if (e.timestamp >= since) count += 1;
+    return Math.round((count / (RATE_WINDOW_MS / 1000)) * 10) / 10;
+  }, [record.events, record.lastEventAt, now]);
+
+  const metrics: ReadonlyArray<readonly [string, string | number]> = [
+    ["Events received", record.totalEvents],
+    ["Events / sec", eventsPerSec],
+    ["Uptime", record.connectedAt ? fmtDuration(record.connectedAt, now) : "—"],
+    ["Reconnects", record.reconnectCount],
+    ["Last event", record.lastEventAt ? fmtAgo(record.lastEventAt, now) : "—"],
+    ["In log", record.events.length]
+  ];
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
@@ -60,11 +94,19 @@ export const DetailPane = memo(function DetailPane({
           flexShrink: 0
         }}
       >
-        <div style={{ overflow: "hidden" }}>
+        <div style={{ overflow: "hidden", minWidth: 0 }}>
           <div style={{ color: C.text, fontSize: 13, fontWeight: 600, ...S.mono, ...S.ellipsis }}>
             {record.url}
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6 }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              flexWrap: "wrap",
+              gap: 8,
+              marginTop: 6
+            }}
+          >
             <StatusDot status={record.status} size={7} />
             <span style={{ color: statusColor(record.status), fontSize: 11, fontWeight: 500 }}>
               {statusLabel(record.status)}
@@ -130,23 +172,19 @@ export const DetailPane = memo(function DetailPane({
         style={{
           display: "flex",
           gap: 8,
-          overflowX: isCompact ? "auto" : undefined,
+          overflowX: "auto",
+          overscrollBehavior: "contain",
           padding: isCompact ? "8px 14px" : "10px 16px",
           borderBottom: `1px solid ${C.border}`,
           flexShrink: 0
         }}
       >
-        {(
-          [
-            ["Events received", record.totalEvents],
-            ["In log", record.events.length]
-          ] as const
-        ).map(([label, val]) => (
+        {metrics.map(([label, val]) => (
           <div
             key={label}
             style={{
-              flex: isCompact ? 1 : undefined,
-              minWidth: isCompact ? 0 : 118,
+              flex: isCompact ? "0 0 auto" : undefined,
+              minWidth: 92,
               border: `1px solid ${C.border}`,
               borderRadius: 8,
               padding: isCompact ? "7px 10px" : "8px 10px",
@@ -157,9 +195,10 @@ export const DetailPane = memo(function DetailPane({
             <div
               style={{
                 color: C.text,
-                fontSize: isCompact ? 16 : 18,
+                fontSize: isCompact ? 15 : 17,
                 fontWeight: 600,
-                marginTop: 2
+                marginTop: 2,
+                ...S.mono
               }}
             >
               {val}
@@ -173,6 +212,7 @@ export const DetailPane = memo(function DetailPane({
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
+          gap: 8,
           padding: isCompact ? "7px 14px" : "8px 16px",
           borderBottom: `1px solid ${C.borderLight}`,
           flexShrink: 0
@@ -180,28 +220,49 @@ export const DetailPane = memo(function DetailPane({
       >
         <span style={{ color: C.textMuted, fontWeight: 500, fontSize: 12 }}>
           Events log{" "}
-          {record.events.length === MAX_EVENTS_LABEL && (
-            <span style={{ color: C.textDim }}>(last {MAX_EVENTS_LABEL})</span>
+          {record.totalEvents > record.events.length && (
+            <span style={{ color: C.textDim }}>
+              (last {record.events.length} of {record.totalEvents})
+            </span>
+          )}
+          {paused && bufferedWhilePaused > 0 && (
+            <span style={{ color: C.connecting }}> · {bufferedWhilePaused} new while paused</span>
           )}
         </span>
-        <Btn onClick={onClear} style={{ height: isCompact ? 30 : undefined }}>
-          Clear
-        </Btn>
+        <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+          <Btn
+            onClick={togglePause}
+            variant={paused ? "primary" : "secondary"}
+            style={{ height: isCompact ? 30 : undefined }}
+          >
+            {paused ? "Resume" : "Pause"}
+          </Btn>
+          <Btn onClick={exportLog} style={{ height: isCompact ? 30 : undefined }}>
+            Export
+          </Btn>
+          <Btn onClick={onClear} style={{ height: isCompact ? 30 : undefined }}>
+            Clear
+          </Btn>
+        </div>
       </div>
 
       <div
         style={{
           padding: isCompact ? "7px 14px" : "8px 16px",
           borderBottom: `1px solid ${C.border}`,
-          flexShrink: 0
+          flexShrink: 0,
+          display: "flex",
+          gap: 6
         }}
       >
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Filter by type or payload..."
+          aria-label="Filter events"
           style={{
-            width: "100%",
+            flex: 1,
+            minWidth: 0,
             boxSizing: "border-box",
             background: C.bg,
             border: `1px solid ${C.border}`,
@@ -214,24 +275,68 @@ export const DetailPane = memo(function DetailPane({
             outline: "none"
           }}
         />
+        {query && (
+          <Btn onClick={() => setQuery("")} style={{ flexShrink: 0 }}>
+            Clear filter
+          </Btn>
+        )}
       </div>
 
       <div
         ref={listRef}
         onScroll={handleScroll}
-        style={{ flex: 1, overflowY: "auto", overflowX: "hidden" }}
+        style={{
+          flex: 1,
+          overflowY: "auto",
+          overflowX: "hidden",
+          overscrollBehavior: "contain"
+        }}
       >
-        {record.events.length === 0 ? (
+        {sourceEvents.length === 0 ? (
           <EmptyLog text="No events yet - waiting for the stream..." />
         ) : filtered.length === 0 ? (
           <EmptyLog text={`No events match "${query}".`} />
         ) : (
-          filtered.map((entry) => <EventRow key={entry.id} entry={entry} />)
+          filtered.map((entry) => (
+            <EventRow key={entry.id} entry={entry} onSelectType={filterByType} />
+          ))
         )}
       </div>
     </div>
   );
 });
+
+function useNow(intervalMs: number): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), intervalMs);
+    return () => clearInterval(id);
+  }, [intervalMs]);
+  return now;
+}
+
+function exportEvents(record: DevtoolsClientRecord): void {
+  if (typeof document === "undefined") return;
+  const payload = {
+    url: record.url,
+    key: record.key,
+    status: record.status,
+    totalEvents: record.totalEvents,
+    exportedAt: new Date().toISOString(),
+    events: record.events.map((e) => ({
+      type: e.type,
+      data: e.data,
+      timestamp: new Date(e.timestamp).toISOString()
+    }))
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = `sse-events-${Date.now()}.json`;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
 
 function EmptyLog({ text }: { text: string }) {
   return (

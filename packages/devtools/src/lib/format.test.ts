@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { canExpandData, expandedData, fmtData, fmtTime, urlPath } from "./format";
+import {
+  canExpandData,
+  expandedData,
+  fmtAgo,
+  fmtData,
+  fmtDuration,
+  fmtTime,
+  urlLabel,
+  urlPath
+} from "./format";
 
 describe("fmtTime", () => {
   it("formats a timestamp as HH:MM:SS", () => {
@@ -12,9 +21,9 @@ describe("fmtTime", () => {
 });
 
 describe("fmtData", () => {
-  it("returns 'null' for null/undefined", () => {
+  it("returns 'null' for null and '(no data)' for undefined", () => {
     expect(fmtData(null)).toBe("null");
-    expect(fmtData(undefined)).toBe("null");
+    expect(fmtData(undefined)).toBe("(no data)");
   });
 
   it("returns string data as-is", () => {
@@ -60,7 +69,11 @@ describe("canExpandData", () => {
   it("returns true for non-string data", () => {
     expect(canExpandData({ text: "hi" })).toBe(true);
     expect(canExpandData(42)).toBe(true);
-    expect(canExpandData(null)).toBe(true);
+  });
+
+  it("returns false for null and undefined (nothing to expand)", () => {
+    expect(canExpandData(null)).toBe(false);
+    expect(canExpandData(undefined)).toBe(false);
   });
 
   it("returns false for short strings", () => {
@@ -69,6 +82,36 @@ describe("canExpandData", () => {
 
   it("returns true for strings longer than 100 characters", () => {
     expect(canExpandData("x".repeat(101))).toBe(true);
+  });
+});
+
+describe("urlLabel", () => {
+  it("keeps the query string so same-path connections differ", () => {
+    expect(urlLabel("http://localhost/api/stream?room=1")).toBe("/api/stream?room=1");
+    expect(urlLabel("http://localhost/api/stream?room=2")).toBe("/api/stream?room=2");
+  });
+
+  it("works with relative URLs", () => {
+    expect(urlLabel("/api/stream?x=1")).toBe("/api/stream?x=1");
+  });
+});
+
+describe("fmtAgo", () => {
+  it("describes recent and older timestamps", () => {
+    const now = 1_000_000;
+    expect(fmtAgo(now, now)).toBe("just now");
+    expect(fmtAgo(now - 5_000, now)).toBe("5s ago");
+    expect(fmtAgo(now - 180_000, now)).toBe("3m ago");
+    expect(fmtAgo(now - 7_200_000, now)).toBe("2h ago");
+  });
+});
+
+describe("fmtDuration", () => {
+  it("formats elapsed time", () => {
+    const now = 10_000_000;
+    expect(fmtDuration(now - 12_000, now)).toBe("12s");
+    expect(fmtDuration(now - 200_000, now)).toBe("3m 20s");
+    expect(fmtDuration(now - 3_840_000, now)).toBe("1h 04m");
   });
 });
 

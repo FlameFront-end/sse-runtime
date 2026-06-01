@@ -17,6 +17,9 @@ export type DevtoolsClientRecord = {
   readonly events: readonly DevtoolsEventEntry[];
   readonly totalEvents: number;
   readonly connectedAt: number | null;
+  readonly firstConnectedAt: number | null;
+  readonly reconnectCount: number;
+  readonly lastEventAt: number | null;
   readonly client: SSEDevtoolsClientInfo["client"];
 };
 

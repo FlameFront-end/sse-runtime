@@ -9,9 +9,12 @@ import {
 } from "react";
 
 import { createDevtoolsRegistry, type RegistrySnapshot } from "../registry/devtools-registry";
+import { isEditableTarget, matchesShortcut, parseShortcut } from "../lib/shortcut";
+import { loadSettings, patchSettings } from "../lib/persistence";
 import { SSEDevtoolsPanel } from "./sse-devtools-panel";
 
 const EMPTY_SNAPSHOT: RegistrySnapshot = new Map();
+const DEFAULT_Z_INDEX = 99999;
 
 export type SSEDevtoolsProviderProps = {
   readonly children: ReactNode;
@@ -22,6 +25,7 @@ export type SSEDevtoolsProviderProps = {
   readonly hideToggleButton?: boolean;
   readonly toggleShortcut?: string;
   readonly maxEvents?: number;
+  readonly zIndex?: number;
 };
 
 type ActiveSSEDevtoolsProviderProps = Omit<SSEDevtoolsProviderProps, "enabled">;
@@ -41,11 +45,19 @@ function ActiveSSEDevtoolsProvider({
   panelHeight = 320,
   hideToggleButton = false,
   toggleShortcut = "alt+d",
-  maxEvents
+  maxEvents,
+  zIndex = DEFAULT_Z_INDEX
 }: ActiveSSEDevtoolsProviderProps): ReactNode {
   const registry = useMemo(() => createDevtoolsRegistry({ maxEvents }), [maxEvents]);
-  const [isOpen, setIsOpen] = useState(initialOpen);
-  const toggleOpen = useCallback(() => setIsOpen((o) => !o), []);
+  const [isOpen, setIsOpen] = useState(() => loadSettings().open ?? initialOpen);
+
+  const toggleOpen = useCallback(() => {
+    setIsOpen((prev) => {
+      const next = !prev;
+      patchSettings({ open: next });
+      return next;
+    });
+  }, []);
 
   const clients = useSyncExternalStore(
     registry.subscribe,
@@ -54,22 +66,12 @@ function ActiveSSEDevtoolsProvider({
   );
 
   useEffect(() => {
-    if (!toggleShortcut) return;
-    const parts = toggleShortcut.toLowerCase().split("+");
-    const key = parts[parts.length - 1];
-    const needAlt = parts.includes("alt");
-    const needCtrl = parts.includes("ctrl");
-    const needShift = parts.includes("shift");
-    const needMeta = parts.includes("meta");
+    const parsed = parseShortcut(toggleShortcut);
+    if (!parsed) return;
 
     const handler = (e: KeyboardEvent) => {
-      if (
-        e.key.toLowerCase() === key &&
-        e.altKey === needAlt &&
-        e.ctrlKey === needCtrl &&
-        e.shiftKey === needShift &&
-        e.metaKey === needMeta
-      ) {
+      if (isEditableTarget(e.target)) return;
+      if (matchesShortcut(parsed, e)) {
         e.preventDefault();
         toggleOpen();
       }
@@ -90,6 +92,7 @@ function ActiveSSEDevtoolsProvider({
         buttonPosition={buttonPosition}
         panelHeight={panelHeight}
         hideToggleButton={hideToggleButton}
+        zIndex={zIndex}
       />
     </SSEDevtoolsRegistrationContext.Provider>
   );

@@ -39,7 +39,8 @@ export function PanelHeader({ connectionCount, isCompact, onClose }: PanelHeader
       <button
         className="sse-dt-soft-button"
         onClick={onClose}
-        title="Close DevTools"
+        title="Close DevTools (Esc)"
+        aria-label="Close DevTools"
         style={{
           background: "transparent",
           border: "none",
@@ -49,14 +50,14 @@ export function PanelHeader({ connectionCount, isCompact, onClose }: PanelHeader
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          fontSize: 13,
+          fontSize: 18,
           height: isCompact ? 24 : 28,
           lineHeight: 1,
           padding: 0,
           width: isCompact ? 24 : 28
         }}
       >
-        x
+        ×
       </button>
     </div>
   );
