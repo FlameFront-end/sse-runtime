@@ -20,7 +20,7 @@ export async function readSSEStream(options: ReadSSEStreamOptions): Promise<SSEE
 
   const signal =
     heartbeatController !== null
-      ? AbortSignal.any([options.signal, heartbeatController.signal])
+      ? combineSignals(options.signal, heartbeatController.signal)
       : options.signal;
 
   function resetHeartbeat(): void {
@@ -52,8 +52,9 @@ export async function readSSEStream(options: ReadSSEStreamOptions): Promise<SSEE
         return createTransportError("SSE stream closed unexpectedly");
       }
 
-      resetHeartbeat();
+      clearTimeout(heartbeatTimer);
       await options.onEvents(parser.parse(textDecoder.decode(chunk.value, { stream: true })));
+      resetHeartbeat();
     }
 
     if (heartbeatController?.signal.aborted) {
@@ -95,7 +96,32 @@ async function readChunk(
     removeAbortListener();
   });
 
+  readPromise.catch(() => undefined);
+
   return Promise.race([readPromise, abortPromise]);
+}
+
+function combineSignals(first: AbortSignal, second: AbortSignal): AbortSignal {
+  if (typeof AbortSignal.any === "function") {
+    return AbortSignal.any([first, second]);
+  }
+
+  const controller = new AbortController();
+
+  const forwardAbort = (source: AbortSignal): void => {
+    controller.abort(source.reason);
+  };
+
+  if (first.aborted) {
+    forwardAbort(first);
+  } else if (second.aborted) {
+    forwardAbort(second);
+  } else {
+    first.addEventListener("abort", () => forwardAbort(first), { once: true });
+    second.addEventListener("abort", () => forwardAbort(second), { once: true });
+  }
+
+  return controller.signal;
 }
 
 async function flushDecoder(

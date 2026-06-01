@@ -63,7 +63,12 @@ client.disconnect();
 Use `SSEProvider` when multiple components need access to the same stream:
 
 ```tsx
-import { SSEProvider, useSSEEvent, useSSEStatus } from "@flamefrontend/sse-runtime-react";
+import {
+  SSEProvider,
+  useSSEContext,
+  useSSEEvent,
+  useSSEStatus
+} from "@flamefrontend/sse-runtime-react";
 
 function App() {
   return (
@@ -88,6 +93,30 @@ function ConnectionBadge() {
   return <span>{status}</span>;
 }
 ```
+
+## Devtools (optional)
+
+Wrap your app once with `SSEDevtoolsProvider` to get a floating panel that lists
+every active connection, its status, and a live event log. Each `useSSE` call and
+`SSEProvider` inside the tree registers automatically — no manual wiring.
+
+```bash
+npm install @flamefrontend/sse-runtime-devtools
+```
+
+```tsx
+import { SSEDevtoolsProvider } from "@flamefrontend/sse-runtime-devtools";
+
+createRoot(document.getElementById("root")).render(
+  <SSEDevtoolsProvider enabled={import.meta.env.DEV}>
+    <App />
+  </SSEDevtoolsProvider>
+);
+```
+
+Pass `enabled={false}` in production — the provider then renders only its
+children with no registry, UI, or overhead. See the
+[devtools README](../packages/devtools/README.md) for all props.
 
 ## Minimal server (Node.js)
 

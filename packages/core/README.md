@@ -110,7 +110,20 @@ const client = createSSEClient<Events>({
 
 Tabs with the same `key` elect one leader through Web Locks. The leader owns the
 SSE connection and forwards events/status/errors through `BroadcastChannel`.
-Unsupported environments fall back to independent per-tab connections.
+When the leader goes away, a follower is promoted and resumes the stream from the
+last seen `Last-Event-ID`. Unsupported environments fall back to independent
+per-tab connections.
+
+### Known Limitations
+
+- A leader that reaches a terminal `error` status (for example after exhausting
+  reconnect retries) keeps leadership and does not hand it off, so other tabs
+  wait rather than racing to open a fresh connection that would likely fail the
+  same way.
+- During the leadership handoff there is a sub-millisecond window in which an
+  event from the new leader may be delivered ahead of a still-draining event
+  from the previous leader. The window is bounded by microtask timing and does
+  not affect steady-state ordering.
 
 ## More Documentation
 

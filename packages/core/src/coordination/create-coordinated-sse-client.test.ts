@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 
 import { createSSEClient } from "../client/create-sse-client";
 import type { SSEClient } from "../client/create-sse-client";
+import type { FetchTransportOptions } from "../transport/create-fetch-transport";
+import type { SSEConnectionStatus } from "../types/public";
 import type { CoordinationBackend, CoordinationChannel } from "./coordination-backend";
 import type { CoordinationMessage } from "./coordination-message";
 
@@ -115,6 +117,134 @@ describe("single-tab coordination", () => {
     expect(followerReceived).toEqual([{ text: "hey" }]);
 
     leader.disconnect();
+    follower.disconnect();
+  });
+
+  it("promotes a follower without flashing a disconnected status on the surviving tab", async () => {
+    const harness = createCoordinationHarness();
+    const leaderTransport = vi.fn(async () => new Response(createControlledStream().readable));
+    const followerTransport = vi.fn(async () => new Response(createControlledStream().readable));
+
+    const leader = createCoordinatedClient(harness, leaderTransport);
+    const follower = createCoordinatedClient(harness, followerTransport);
+
+    await leader.connect();
+    await waitFor(() => leader.getStatus() === "open");
+    await follower.connect();
+    await waitFor(() => follower.getStatus() === "open");
+
+    const followerStatuses: SSEConnectionStatus[] = [];
+    const unsubscribe = follower.subscribeStatus((status) => followerStatuses.push(status));
+    followerStatuses.length = 0;
+
+    leader.disconnect();
+    await waitFor(() => followerTransport.mock.calls.length === 1);
+    await waitFor(() => follower.getStatus() === "open");
+
+    expect(followerStatuses).not.toContain("closed");
+    expect(follower.getStatus()).toBe("open");
+
+    unsubscribe();
+    follower.disconnect();
+  });
+
+  it("clears a follower's error after the leader recovers", async () => {
+    const harness = createCoordinationHarness();
+    const recoveredStream = createControlledStream();
+    const reconnectWait = createDeferred<void>();
+    const leaderTransport = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(null, { status: 503 }))
+      .mockResolvedValueOnce(new Response(recoveredStream.readable));
+
+    const leader = createSSEClient<ChatEvents>(
+      {
+        key: ["chat"],
+        url: "/stream",
+        coordination: { enabled: true, mode: "single-tab" },
+        reconnect: { enabled: true, minDelay: 0, maxDelay: 0 }
+      },
+      {
+        transport: leaderTransport,
+        wait: () => reconnectWait.promise,
+        coordinationBackend: harness.createBackend()
+      }
+    );
+    const follower = createSSEClient<ChatEvents>(
+      {
+        key: ["chat"],
+        url: "/stream",
+        coordination: { enabled: true, mode: "single-tab" }
+      },
+      {
+        transport: async () => new Response(createControlledStream().readable),
+        coordinationBackend: harness.createBackend()
+      }
+    );
+
+    await leader.connect();
+    await waitFor(() => leader.getStatus() === "reconnecting");
+
+    await follower.connect();
+    await waitFor(() => follower.getError()?.status === 503);
+
+    reconnectWait.resolve();
+    await waitFor(() => follower.getStatus() === "open");
+    await waitFor(() => follower.getError() === null);
+
+    expect(follower.getError()).toBeNull();
+
+    leader.disconnect();
+    follower.disconnect();
+  });
+
+  it("resumes from the last event id when a follower is promoted to leader", async () => {
+    const harness = createCoordinationHarness();
+    const leaderStream = createControlledStream();
+    let followerSignalHeaders: Record<string, string> | undefined;
+    const followerTransport = vi.fn(async (options: FetchTransportOptions) => {
+      followerSignalHeaders = options.headers;
+
+      return new Response(createControlledStream().readable);
+    });
+
+    const leader = createSSEClient<ChatEvents>(
+      {
+        key: ["chat"],
+        url: "/stream",
+        coordination: { enabled: true, mode: "single-tab" }
+      },
+      {
+        transport: async () => new Response(leaderStream.readable),
+        coordinationBackend: harness.createBackend()
+      }
+    );
+    const follower = createSSEClient<ChatEvents>(
+      {
+        key: ["chat"],
+        url: "/stream",
+        coordination: { enabled: true, mode: "single-tab" }
+      },
+      {
+        transport: followerTransport,
+        coordinationBackend: harness.createBackend()
+      }
+    );
+
+    await leader.connect();
+    await waitFor(() => leader.getStatus() === "open");
+    await follower.connect();
+
+    leaderStream.enqueue('id: 42\nevent: message\ndata: {"text":"hi"}\n\n');
+    await waitFor(() => follower.getStatus() === "open");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    leader.disconnect();
+
+    await waitFor(() => followerTransport.mock.calls.length === 1);
+
+    expect(followerSignalHeaders?.["Last-Event-ID"]).toBe("42");
+
     follower.disconnect();
   });
 
@@ -331,4 +461,27 @@ async function waitFor(predicate: () => boolean): Promise<void> {
   }
 
   throw new Error("Condition was not met");
+}
+
+function createDeferred<T>(): {
+  readonly promise: Promise<T>;
+  readonly resolve: (value: T | PromiseLike<T>) => void;
+  readonly reject: (reason?: unknown) => void;
+} {
+  let resolveDeferred: ((value: T | PromiseLike<T>) => void) | undefined;
+  let rejectDeferred: ((reason?: unknown) => void) | undefined;
+  const promise = new Promise<T>((resolve, reject) => {
+    resolveDeferred = resolve;
+    rejectDeferred = reject;
+  });
+
+  if (!resolveDeferred || !rejectDeferred) {
+    throw new Error("Deferred promise was not initialized");
+  }
+
+  return {
+    promise,
+    resolve: resolveDeferred,
+    reject: rejectDeferred
+  };
 }

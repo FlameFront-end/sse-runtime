@@ -77,15 +77,16 @@ All callbacks are non-critical — errors thrown inside them are silently swallo
 
 Returned by `createSSEClient`.
 
-| Method            | Signature                                                                                                      | Description                                                                                                    |
-| ----------------- | -------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| `connect`         | `() => Promise<void>`                                                                                          | Open the connection. Resolves once the HTTP response is accepted. Idempotent — safe to call when already open. |
-| `disconnect`      | `() => void`                                                                                                   | Close the connection and stop all reconnect timers                                                             |
-| `getStatus`       | `() => SSEConnectionStatus`                                                                                    | Synchronous status snapshot                                                                                    |
-| `getError`        | `() => SSEError \| null`                                                                                       | Last error, or null                                                                                            |
-| `subscribeStatus` | `(listener: SSEStatusListener) => () => void`                                                                  | Subscribe to status changes. Returns an unsubscribe function.                                                  |
-| `subscribeError`  | `(listener: SSEErrorListener) => () => void`                                                                   | Subscribe to error changes. Returns an unsubscribe function.                                                   |
-| `subscribeEvent`  | `<N extends keyof Events>(eventName: N, handler: (payload: Events[N]) => void \| Promise<void>) => () => void` | Subscribe to a named event at runtime. Returns an unsubscribe function.                                        |
+| Method              | Signature                                                                                                      | Description                                                                                                                       |
+| ------------------- | -------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `connect`           | `() => Promise<void>`                                                                                          | Open the connection. Resolves once the HTTP response is accepted. Idempotent — safe to call when already open.                    |
+| `disconnect`        | `() => void`                                                                                                   | Close the connection and stop all reconnect timers                                                                                |
+| `getStatus`         | `() => SSEConnectionStatus`                                                                                    | Synchronous status snapshot                                                                                                       |
+| `getError`          | `() => SSEError \| null`                                                                                       | Last error, or null                                                                                                               |
+| `subscribeStatus`   | `(listener: SSEStatusListener) => () => void`                                                                  | Subscribe to status changes. Returns an unsubscribe function.                                                                     |
+| `subscribeError`    | `(listener: SSEErrorListener) => () => void`                                                                   | Subscribe to error changes. Returns an unsubscribe function.                                                                      |
+| `subscribeEvent`    | `<N extends keyof Events>(eventName: N, handler: (payload: Events[N]) => void \| Promise<void>) => () => void` | Subscribe to a named event at runtime. Returns an unsubscribe function.                                                           |
+| `subscribeAnyEvent` | `(handler: (event: SSEEventEnvelope) => void \| Promise<void>) => () => void`                                  | Observe every event regardless of name. Receives `{ type, data }`; handler errors are swallowed. Returns an unsubscribe function. |
 
 #### `SSEConnectionStatus`
 
@@ -106,9 +107,9 @@ type SSEConnectionStatus = "idle" | "closed" | "connecting" | "open" | "reconnec
 
 ```ts
 type SSEError = {
-  kind: SSEErrorKind; // "transport" | "http" | "auth" | "handler"
+  kind: SSEErrorKind; // "transport" | "auth" | "handler"
   message: string;
-  status?: number; // HTTP status for "http" errors
+  status?: number; // HTTP status code, set on transport errors from a failed response
   cause?: unknown; // Original exception
 };
 ```
@@ -146,7 +147,7 @@ Returns `UseSSEResult`:
 | `connect`    | `() => Promise<void>` | Manually trigger a connection (e.g. after `enabled: false`) |
 | `disconnect` | `() => void`          | Manually disconnect                                         |
 
-The client is recreated only when `key`, `url`, `enabled`, `credentials`, or `coordination` change. Dynamic values like `headers`, event handlers, `reconnect`, and `auth` are read from a ref — they update without recreating the client.
+The client is recreated only when `key`, `url`, `enabled`, `credentials`, the set of event names, or `coordination` change. Dynamic values like `headers`, event handler functions, `reconnect`, and `auth` are read from a ref — they update without recreating the client.
 
 ---
 

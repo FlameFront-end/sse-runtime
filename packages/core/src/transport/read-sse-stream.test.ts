@@ -118,6 +118,39 @@ describe("readSSEStream - heartbeat timeout", () => {
     ]);
   });
 
+  it("does not count handler processing time against the heartbeat budget", async () => {
+    const stream = createControlledStream();
+    let releaseHandler: (() => void) | undefined;
+    const onEvents = vi
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            releaseHandler = resolve;
+          })
+      )
+      .mockResolvedValue(undefined);
+    const streamTask = readSSEStream({
+      stream: stream.readable,
+      signal: new AbortController().signal,
+      createTextDecoder: () => new TextDecoder(),
+      onEvents,
+      heartbeatTimeout: 100
+    });
+
+    stream.enqueue("data: ping\n\n");
+    await vi.advanceTimersByTimeAsync(0);
+
+    await vi.advanceTimersByTimeAsync(1000);
+    releaseHandler?.();
+    await vi.advanceTimersByTimeAsync(0);
+
+    stream.close();
+    const result = await streamTask;
+
+    expect(result?.message).not.toMatch(/heartbeat/i);
+  });
+
   it("does not return a heartbeat error when aborted externally before timeout", async () => {
     const stream = createControlledStream();
     const abortController = new AbortController();

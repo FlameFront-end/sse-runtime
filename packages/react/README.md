@@ -1,16 +1,22 @@
 # @flamefrontend/sse-runtime-react
 
-React hook for production Server-Sent Events clients.
+React hooks for production Server-Sent Events clients.
 
 This package wraps `@flamefrontend/sse-runtime-core` with a `useSSE` hook that
 connects on mount, disconnects on unmount, exposes status/error state, and keeps
-event handlers and dynamic options fresh across renders.
+event handlers and dynamic options fresh across renders. An `SSEProvider` plus
+the `useSSEContext`, `useSSEEvent`, and `useSSEStatus` hooks let multiple
+components share a single stream.
 
 ## Install
 
 ```bash
-pnpm add @flamefrontend/sse-runtime-react
+npm install @flamefrontend/sse-runtime-react
 ```
+
+> Works with any package manager — swap `npm install` for `pnpm add` or `yarn add`.
+> `@flamefrontend/sse-runtime-core` is pulled in automatically; install it
+> explicitly only if you import from it directly. Requires `react ≥ 18`.
 
 ## Quick Start
 
@@ -53,18 +59,12 @@ export function ChatStream({ chatId }: { chatId: string }) {
 
 ## API
 
+`useSSE` accepts the full core `SSEClientOptions` — `key`, `url`, `enabled`,
+`headers`, `credentials`, `events`, `reconnect`, `auth`, `coordination`,
+`heartbeat`, and `diagnostics`.
+
 ```ts
-const connection = useSSE<Events>({
-  key,
-  url,
-  enabled,
-  headers,
-  credentials,
-  events,
-  reconnect,
-  auth,
-  coordination
-});
+const connection = useSSE<Events>({ key, url, events });
 ```
 
 Returns:
@@ -95,6 +95,58 @@ The client is recreated when transport-level identity changes:
 - `credentials`
 - event names
 - `coordination`
+
+## Sharing One Stream Across Components
+
+`useSSE` owns a client for a single component. To share one stream across a
+subtree, use `SSEProvider` and read it with the helper hooks.
+
+```tsx
+import {
+  SSEProvider,
+  useSSEContext,
+  useSSEEvent,
+  useSSEStatus
+} from "@flamefrontend/sse-runtime-react";
+
+function App() {
+  return (
+    <SSEProvider<ChatEvents> options={{ key: ["chat"], url: "/api/chat/stream" }}>
+      <MessageList />
+      <ConnectionBadge />
+    </SSEProvider>
+  );
+}
+
+function MessageList() {
+  const client = useSSEContext<ChatEvents>();
+  useSSEEvent(client, "message", (message) => {
+    console.log(message.text);
+  });
+  return null;
+}
+
+function ConnectionBadge() {
+  const client = useSSEContext<ChatEvents>();
+  const { status, error } = useSSEStatus(client);
+  return <span>{error ? error.message : status}</span>;
+}
+```
+
+- **`SSEProvider`** — owns the client lifecycle (connect on mount, disconnect on
+  unmount) and provides it via context. Same recreation rules as `useSSE`.
+- **`useSSEContext()`** — returns the nearest provider's client; throws if used
+  outside an `SSEProvider`.
+- **`useSSEEvent(client, name, handler)`** — subscribes to a named event; the
+  handler is kept in a ref and unsubscribes on unmount or when `name` changes.
+- **`useSSEStatus(client)`** — returns `{ status, error }` for components that
+  only display connection state.
+
+## Devtools
+
+Wrap your tree once with `SSEDevtoolsProvider` from
+[`@flamefrontend/sse-runtime-devtools`](../devtools) and every `useSSE` and
+`SSEProvider` inside registers automatically — no manual wiring.
 
 ## Auth Refresh
 

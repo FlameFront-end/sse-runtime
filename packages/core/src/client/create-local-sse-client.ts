@@ -51,7 +51,8 @@ export type SSEClientDependencies = {
 export type LocalSSEClientDependencies = SSEClientDependencies & {
   // Internal hook used by the coordination layer to forward raw stream events to
   // follower tabs. Not part of the public API.
-  readonly onStreamEvent?: (event: ParsedSSEEvent) => void;
+  readonly onStreamEvent?: (event: ParsedSSEEvent) => Promise<void> | void;
+  readonly initialLastEventId?: string;
 };
 
 type ConnectionStatus = "connecting" | "reconnecting";
@@ -76,11 +77,15 @@ export function createLocalSSEClient<Events extends EventMap>(
   let reconnectAttempt = 0;
   let authRefreshAttempt = 0;
   let generation = 0;
-  let lastEventId: string | undefined;
+  let lastEventId: string | undefined = dependencies.initialLastEventId;
   let serverRetryDelay: number | undefined;
 
   return {
     async connect(): Promise<void> {
+      if (options.enabled === false) {
+        return;
+      }
+
       if (state.getStatus() === "connecting" && connectPromise) {
         return connectPromise;
       }
@@ -92,7 +97,7 @@ export function createLocalSSEClient<Events extends EventMap>(
       hasManualDisconnect = false;
       reconnectAttempt = 0;
       authRefreshAttempt = 0;
-      lastEventId = undefined;
+      lastEventId = dependencies.initialLastEventId;
       serverRetryDelay = undefined;
       state.resetError();
       const currentConnectPromise = openConnection(createConnectionController(), "connecting");
@@ -128,7 +133,11 @@ export function createLocalSSEClient<Events extends EventMap>(
       const anyHandler = handler as unknown as AnyHandler;
       handlers.add(anyHandler);
       return () => {
-        subscriberRegistry.get(key)?.delete(anyHandler);
+        const set = subscriberRegistry.get(key);
+        if (set) {
+          set.delete(anyHandler);
+          if (set.size === 0) subscriberRegistry.delete(key);
+        }
       };
     },
 
@@ -253,7 +262,7 @@ export function createLocalSSEClient<Events extends EventMap>(
         serverRetryDelay = event.retry;
       }
 
-      onStreamEvent?.(event);
+      await onStreamEvent?.(event);
 
       const handlerError = await dispatchSSEEvent({
         event,
@@ -392,6 +401,7 @@ export function createLocalSSEClient<Events extends EventMap>(
 
     authRefreshAttempt += 1;
     const controller = createConnectionController();
+    state.setStatus("reconnecting");
     callDiagnostic(options.diagnostics?.onAuthRefresh, { error: state.getError()! });
 
     try {
