@@ -1,6 +1,6 @@
 {
   "name": "@flamefrontend/sse-runtime-react",
-  "version": "0.3.2",
+  "version": "0.4.0",
   "description": "React hook (useSSE) for the @flamefrontend/sse-runtime-core Server-Sent Events runtime.",
   "keywords": [
     "sse",
