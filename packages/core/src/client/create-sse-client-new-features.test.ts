@@ -78,15 +78,17 @@ describe("ensureOpen — local client", () => {
     client.disconnect();
   });
 
-  it("returns false when client is disabled", async () => {
+  it("connects on demand even when disabled (enabled only gates auto-connect)", async () => {
+    const stream = createControlledStream();
     const client = createSSEClient<ChatEvents>(
       { key: ["chat"], url: "/stream", enabled: false },
-      { transport: vi.fn() }
+      { transport: async () => new Response(stream.readable) }
     );
 
     const result = await client.ensureOpen();
 
-    expect(result).toBe(false);
+    expect(result).toBe(true);
+    client.disconnect();
   });
 
   it("connects and resolves true from closed state", async () => {
@@ -546,8 +548,9 @@ describe("ensureOpen — coordinated client", () => {
     follower.disconnect();
   });
 
-  it("returns false when disabled", async () => {
+  it("connects on demand even when disabled (enabled only gates auto-connect)", async () => {
     const harness = createCoordinationHarness();
+    const stream = createControlledStream();
     const client = createSSEClient<ChatEvents>(
       {
         key: ["chat"],
@@ -556,14 +559,15 @@ describe("ensureOpen — coordinated client", () => {
         coordination: { enabled: true, mode: "single-tab" }
       },
       {
-        transport: vi.fn(),
+        transport: async () => new Response(stream.readable),
         coordinationBackend: harness.createBackend()
       }
     );
 
     const result = await client.ensureOpen();
 
-    expect(result).toBe(false);
+    expect(result).toBe(true);
+    client.disconnect();
   });
 
   it("rejects when timeout expires before leader grants open status", async () => {

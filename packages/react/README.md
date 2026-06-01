@@ -63,6 +63,10 @@ export function ChatStream({ chatId }: { chatId: string }) {
 `headers`, `credentials`, `events`, `reconnect`, `auth`, `coordination`,
 `heartbeat`, and `diagnostics`.
 
+`enabled` controls auto-connect: when `false`, the hook does not open the stream
+on mount, but the returned `connect()` still opens it on demand (like `enabled`
+in React Query), and `disconnect()` closes it.
+
 ```ts
 const connection = useSSE<Events>({ key, url, events });
 ```

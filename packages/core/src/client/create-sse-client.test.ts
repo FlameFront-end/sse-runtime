@@ -32,7 +32,22 @@ describe("createSSEClient", () => {
     client.disconnect();
   });
 
-  it("does not open a connection when disabled", async () => {
+  it("starts idle when disabled and does not connect on its own", () => {
+    const transport = vi.fn(async () => new Response(createControlledStream().readable));
+    const client = createSSEClient<ChatEvents>(
+      {
+        key: ["chat"],
+        url: "/stream",
+        enabled: false
+      },
+      { transport }
+    );
+
+    expect(transport).not.toHaveBeenCalled();
+    expect(client.getStatus()).toBe("idle");
+  });
+
+  it("still connects on an explicit connect() call when disabled", async () => {
     const transport = vi.fn(async () => new Response(createControlledStream().readable));
     const client = createSSEClient<ChatEvents>(
       {
@@ -45,8 +60,9 @@ describe("createSSEClient", () => {
 
     await client.connect();
 
-    expect(transport).not.toHaveBeenCalled();
-    expect(client.getStatus()).toBe("idle");
+    expect(transport).toHaveBeenCalledTimes(1);
+    expect(client.getStatus()).toBe("open");
+    client.disconnect();
   });
 
   it("dispatches parsed JSON payloads to event handlers", async () => {
