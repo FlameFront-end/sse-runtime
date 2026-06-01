@@ -1,0 +1,64 @@
+{
+  "name": "@flamefrontend/sse-runtime-react",
+  "version": "0.3.1",
+  "description": "React hook (useSSE) for the @flamefrontend/sse-runtime-core Server-Sent Events runtime.",
+  "keywords": [
+    "sse",
+    "server-sent-events",
+    "eventsource",
+    "react",
+    "hooks",
+    "streaming",
+    "typescript"
+  ],
+  "license": "MIT",
+  "author": "FlameFront-end",
+  "homepage": "https://github.com/FlameFront-end/sse-runtime#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/FlameFront-end/sse-runtime",
+    "directory": "packages/react"
+  },
+  "bugs": {
+    "url": "https://github.com/FlameFront-end/sse-runtime/issues"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "peerDependencies": {
+    "react": "^18.3.0 || ^19.0.0"
+  },
+  "dependencies": {
+    "@flamefrontend/sse-runtime-core": "workspace:*"
+  },
+  "devDependencies": {
+    "@testing-library/react": "^16.3.2",
+    "@types/react": "^19.1.6",
+    "jsdom": "^29.1.1",
+    "typescript": "^5.8.3",
+    "vitest": "^3.1.4"
+  },
+  "scripts": {
+    "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
+    "build": "pnpm run clean && tsc -p tsconfig.build.json",
+    "lint": "eslint src --ext .ts,.tsx",
+    "test": "vitest run --passWithNoTests",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  }
+}

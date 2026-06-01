@@ -1,0 +1,5 @@
+pnpm format
+git add -A
+pnpm build
+pnpm -r typecheck
+pnpm test

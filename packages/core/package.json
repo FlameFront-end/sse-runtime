@@ -1,0 +1,54 @@
+{
+  "name": "@flamefrontend/sse-runtime-core",
+  "version": "0.3.1",
+  "description": "Framework-agnostic runtime for the Server-Sent Events lifecycle: typed events, reconnect with backoff, Last-Event-ID resumption, auth refresh, and connection status.",
+  "keywords": [
+    "sse",
+    "server-sent-events",
+    "eventsource",
+    "streaming",
+    "reconnect",
+    "typescript"
+  ],
+  "license": "MIT",
+  "author": "FlameFront-end",
+  "homepage": "https://github.com/FlameFront-end/sse-runtime#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/FlameFront-end/sse-runtime",
+    "directory": "packages/core"
+  },
+  "bugs": {
+    "url": "https://github.com/FlameFront-end/sse-runtime/issues"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
+    "build": "pnpm run clean && tsc -p tsconfig.build.json",
+    "lint": "eslint src --ext .ts",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.3",
+    "vitest": "^3.1.4"
+  }
+}

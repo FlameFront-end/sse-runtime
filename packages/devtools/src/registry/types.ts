@@ -1,0 +1,23 @@
+import type { SSEConnectionStatus, SSEError } from "@flamefrontend/sse-runtime-core";
+import type { SSEDevtoolsClientInfo } from "@flamefrontend/sse-runtime-react";
+
+export type DevtoolsEventEntry = {
+  readonly id: string;
+  readonly type: string;
+  readonly data: unknown;
+  readonly timestamp: number;
+};
+
+export type DevtoolsClientRecord = {
+  readonly id: string;
+  readonly key: string;
+  readonly url: string;
+  readonly status: SSEConnectionStatus;
+  readonly error: SSEError | null;
+  readonly events: readonly DevtoolsEventEntry[];
+  readonly totalEvents: number;
+  readonly connectedAt: number | null;
+  readonly client: SSEDevtoolsClientInfo["client"];
+};
+
+export type RegistrySnapshot = ReadonlyMap<string, DevtoolsClientRecord>;

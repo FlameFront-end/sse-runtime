@@ -1,0 +1,14 @@
+node_modules/
+dist/
+coverage/
+.turbo/
+.vite/
+*.tsbuildinfo
+*.log
+.env
+.env.*
+!.env.example
+steps/
+.claude
+CLAUDE.md
+.playwright-mcp

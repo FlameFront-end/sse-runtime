@@ -1,0 +1,37 @@
+{
+  "name": "sse-runtime",
+  "version": "0.1.1",
+  "private": true,
+  "description": "TypeScript runtime for managing the Server-Sent Events lifecycle in React applications.",
+  "license": "MIT",
+  "author": "FlameFront-end",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/FlameFront-end/sse-runtime"
+  },
+  "type": "module",
+  "packageManager": "pnpm@9.15.0",
+  "scripts": {
+    "build": "pnpm -r --sort build",
+    "clean": "pnpm -r clean",
+    "dev": "pnpm --filter react-chat-demo dev",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "pnpm -r lint",
+    "release": "pnpm build && pnpm changeset publish",
+    "version": "pnpm changeset version",
+    "test": "pnpm -r test",
+    "typecheck": "pnpm build && pnpm -r typecheck",
+    "prepare": "husky"
+  },
+  "devDependencies": {
+    "@changesets/cli": "^2.31.0",
+    "@types/node": "^22.15.29",
+    "eslint": "^9.27.0",
+    "husky": "^9.1.7",
+    "prettier": "^3.5.3",
+    "typescript": "^5.8.3",
+    "typescript-eslint": "^8.60.0",
+    "vitest": "^3.1.4"
+  }
+}
