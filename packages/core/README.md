@@ -66,7 +66,7 @@ the raw string payload.
 
 - `key`: stable stream identity, for example `["chat", chatId]`.
 - `url`: SSE endpoint URL.
-- `enabled`: set to `false` to start idle.
+- `enabled`: set to `false` to start idle. The client still opens when you call `connect()`; `enabled` only controls auto-connect in the React adapter.
 - `headers`: static or async headers, resolved before each connection attempt.
 - `credentials`: passed to `fetch`, for example `"include"`.
 - `events`: typed event handlers registered at creation time.

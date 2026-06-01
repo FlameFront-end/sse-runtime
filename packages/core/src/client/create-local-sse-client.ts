@@ -85,10 +85,6 @@ export function createLocalSSEClient<Events extends EventMap>(
 
   const theClient: SSEClient<Events> = {
     async connect(): Promise<void> {
-      if (options.enabled === false) {
-        return;
-      }
-
       if (state.getStatus() === "connecting" && connectPromise) {
         return connectPromise;
       }
@@ -127,11 +123,7 @@ export function createLocalSSEClient<Events extends EventMap>(
       });
     },
 
-    ensureOpen: buildEnsureOpen(
-      () => options.enabled !== false,
-      state,
-      () => void theClient.connect()
-    ),
+    ensureOpen: buildEnsureOpen(state, () => void theClient.connect()),
 
     subscribeEvent<EventName extends keyof Events>(
       eventName: EventName,

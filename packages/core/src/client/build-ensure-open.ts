@@ -14,15 +14,10 @@ type EnsureOpenState = {
  * idempotent (a no-op if already connecting or already active).
  */
 export function buildEnsureOpen(
-  getEnabled: () => boolean,
   state: EnsureOpenState,
   doConnect: () => void
 ): (ensureOptions?: { readonly timeout?: number }) => Promise<boolean> {
   return (ensureOptions) => {
-    if (!getEnabled()) {
-      return Promise.resolve(false);
-    }
-
     if (state.getStatus() === "open") {
       return Promise.resolve(true);
     }
@@ -47,7 +42,8 @@ export function buildEnsureOpen(
       }
     });
 
-    if (state.getStatus() === "closed" || state.getStatus() === "error") {
+    const status = state.getStatus();
+    if (status === "idle" || status === "closed" || status === "error") {
       doConnect();
     }
 

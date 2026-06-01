@@ -59,11 +59,7 @@ export function createCoordinatedSSEClient<Events extends EventMap>(
     connect,
     disconnect,
 
-    ensureOpen: buildEnsureOpen(
-      () => options.enabled !== false,
-      state,
-      () => void connect()
-    ),
+    ensureOpen: buildEnsureOpen(state, () => void connect()),
 
     subscribeEvent<EventName extends keyof Events>(
       eventName: EventName,
@@ -100,7 +96,7 @@ export function createCoordinatedSSEClient<Events extends EventMap>(
   };
 
   async function connect(): Promise<void> {
-    if (options.enabled === false || isActive) {
+    if (isActive) {
       return;
     }
 
