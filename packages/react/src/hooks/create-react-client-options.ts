@@ -18,7 +18,11 @@ export function createReactClientOptions<Events extends EventMap>(
     events: createEventHandlers(optionsRef),
     reconnect: createReconnectOptions(optionsRef),
     auth: createAuthOptions(optionsRef),
-    coordination: options.coordination
+    coordination: options.coordination,
+    heartbeat: options.heartbeat,
+    diagnostics: createDiagnosticsOptions(optionsRef),
+    retry: createRetryOptions(optionsRef),
+    openTimeout: options.openTimeout
   };
 }
 
@@ -69,6 +73,54 @@ function createAuthOptions<Events extends EventMap>(
     },
     get retryAfterRefresh() {
       return optionsRef.current.auth?.retryAfterRefresh;
+    }
+  };
+}
+
+function createDiagnosticsOptions<Events extends EventMap>(
+  optionsRef: MutableRefObject<SSEClientOptions<Events>>
+): SSEClientOptions<Events>["diagnostics"] {
+  if (optionsRef.current.diagnostics == null) {
+    return undefined;
+  }
+
+  return {
+    get onAttempt() {
+      return optionsRef.current.diagnostics?.onAttempt;
+    },
+    get onReconnectScheduled() {
+      return optionsRef.current.diagnostics?.onReconnectScheduled;
+    },
+    get onAuthRefresh() {
+      return optionsRef.current.diagnostics?.onAuthRefresh;
+    },
+    get onCoordinationRoleChange() {
+      return optionsRef.current.diagnostics?.onCoordinationRoleChange;
+    },
+    get onRawEvent() {
+      return optionsRef.current.diagnostics?.onRawEvent;
+    },
+    get onOpen() {
+      return optionsRef.current.diagnostics?.onOpen;
+    },
+    get onDisconnect() {
+      return optionsRef.current.diagnostics?.onDisconnect;
+    },
+    get onParseError() {
+      return optionsRef.current.diagnostics?.onParseError;
+    }
+  };
+}
+
+function createRetryOptions<Events extends EventMap>(
+  optionsRef: MutableRefObject<SSEClientOptions<Events>>
+): SSEClientOptions<Events>["retry"] {
+  return {
+    get shouldRetry() {
+      return optionsRef.current.retry?.shouldRetry;
+    },
+    get getDelay() {
+      return optionsRef.current.retry?.getDelay;
     }
   };
 }

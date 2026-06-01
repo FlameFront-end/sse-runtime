@@ -16,6 +16,7 @@ import {
 } from "../transport/create-fetch-transport";
 import { readSSEStream } from "../transport/read-sse-stream";
 import { waitForDelay } from "../timing/wait-for-delay";
+import { combineSignals } from "../utils/combine-signals";
 import type {
   EventHandler,
   EventMap,
@@ -26,10 +27,12 @@ import type {
   SSEErrorListener,
   SSEStatusListener
 } from "../types/public";
+import { buildEnsureOpen } from "./build-ensure-open";
 
 export type SSEClient<Events extends EventMap = EventMap> = {
   readonly connect: () => Promise<void>;
   readonly disconnect: () => void;
+  readonly ensureOpen: (options?: { readonly timeout?: number }) => Promise<boolean>;
   readonly getError: () => SSEError | null;
   readonly getStatus: () => SSEConnectionStatus;
   readonly subscribeError: (listener: SSEErrorListener) => () => void;
@@ -80,7 +83,7 @@ export function createLocalSSEClient<Events extends EventMap>(
   let lastEventId: string | undefined = dependencies.initialLastEventId;
   let serverRetryDelay: number | undefined;
 
-  return {
+  const theClient: SSEClient<Events> = {
     async connect(): Promise<void> {
       if (options.enabled === false) {
         return;
@@ -118,7 +121,17 @@ export function createLocalSSEClient<Events extends EventMap>(
       abortController?.abort();
       abortController = null;
       state.setStatus("closed");
+      callDiagnostic(options.diagnostics?.onDisconnect, {
+        url: options.url,
+        reason: "manual"
+      });
     },
+
+    ensureOpen: buildEnsureOpen(
+      () => options.enabled !== false,
+      state,
+      () => void theClient.connect()
+    ),
 
     subscribeEvent<EventName extends keyof Events>(
       eventName: EventName,
@@ -154,6 +167,8 @@ export function createLocalSSEClient<Events extends EventMap>(
     subscribeStatus: state.subscribeStatus
   };
 
+  return theClient;
+
   function createConnectionController(): AbortController {
     const controller = new AbortController();
     abortController = controller;
@@ -168,6 +183,21 @@ export function createLocalSSEClient<Events extends EventMap>(
   ): Promise<void> {
     const currentGeneration = generation;
 
+    let openTimeoutTimer: ReturnType<typeof setTimeout> | undefined;
+    let openTimeoutController: AbortController | null = null;
+
+    if (options.openTimeout !== undefined) {
+      openTimeoutController = new AbortController();
+      openTimeoutTimer = setTimeout(() => {
+        openTimeoutController!.abort(createTransportError("SSE connection open timed out"));
+      }, options.openTimeout);
+    }
+
+    const effectiveSignal =
+      openTimeoutController !== null
+        ? combineSignals(controller.signal, openTimeoutController.signal)
+        : controller.signal;
+
     try {
       state.setStatus(connectionStatus);
       callDiagnostic(options.diagnostics?.onAttempt, {
@@ -175,13 +205,17 @@ export function createLocalSSEClient<Events extends EventMap>(
         url: options.url
       });
 
-      const transportOptions = await createTransportOptions(controller.signal);
+      const transportOptions = await createTransportOptions(effectiveSignal);
 
       if (!isCurrentConnection(controller, currentGeneration)) {
+        clearTimeout(openTimeoutTimer);
         return;
       }
 
       const response = await transport(transportOptions);
+
+      clearTimeout(openTimeoutTimer);
+      openTimeoutController = null;
 
       if (!response.ok) {
         throw createHTTPError(response);
@@ -199,9 +233,11 @@ export function createLocalSSEClient<Events extends EventMap>(
       authRefreshAttempt = 0;
       state.resetError();
       state.setStatus("open");
+      callDiagnostic(options.diagnostics?.onOpen, { url: options.url });
       startStreamReader(response.body, controller, currentGeneration);
     } catch (cause) {
-      handleConnectionError(cause, controller, currentGeneration);
+      clearTimeout(openTimeoutTimer);
+      handleConnectionError(cause, controller, currentGeneration, "connection");
     }
   }
 
@@ -244,11 +280,11 @@ export function createLocalSSEClient<Events extends EventMap>(
     streamTask
       .then((streamError) => {
         if (streamError) {
-          handleConnectionError(streamError, controller, currentGeneration);
+          handleConnectionError(streamError, controller, currentGeneration, "stream");
         }
       })
       .catch((cause: unknown) => {
-        handleConnectionError(cause, controller, currentGeneration);
+        handleConnectionError(cause, controller, currentGeneration, "stream");
       });
   }
 
@@ -261,6 +297,15 @@ export function createLocalSSEClient<Events extends EventMap>(
       if (event.retry !== undefined) {
         serverRetryDelay = event.retry;
       }
+
+      callDiagnostic(options.diagnostics?.onRawEvent, {
+        event: event.event,
+        data: event.data,
+        id: event.id,
+        retry: event.retry,
+        timestamp: Date.now(),
+        connectionKey: options.key
+      });
 
       await onStreamEvent?.(event);
 
@@ -297,6 +342,10 @@ export function createLocalSSEClient<Events extends EventMap>(
     const parsed = parseEventPayloadStrict(event.data, event.event);
 
     if (!parsed.ok) {
+      callDiagnostic(options.diagnostics?.onParseError, {
+        error: parsed.error,
+        eventName: event.event
+      });
       state.setError(parsed.error);
       return;
     }
@@ -310,10 +359,13 @@ export function createLocalSSEClient<Events extends EventMap>(
     }
   }
 
+  type ErrorSource = "connection" | "stream";
+
   function handleConnectionError(
     cause: unknown,
     controller: AbortController,
-    currentGeneration: number
+    currentGeneration: number,
+    source: ErrorSource
   ): void {
     if (!isCurrentConnection(controller, currentGeneration)) {
       return;
@@ -327,22 +379,33 @@ export function createLocalSSEClient<Events extends EventMap>(
       return;
     }
 
-    if (canReconnect()) {
+    if (shouldRetry(connectionError)) {
       void reconnect(currentGeneration, connectionError);
       return;
     }
 
+    callDiagnostic(options.diagnostics?.onDisconnect, {
+      url: options.url,
+      reason: source === "stream" ? "stream-ended" : "error"
+    });
     state.setStatus("error");
   }
 
-  function canReconnect(): boolean {
+  function shouldRetry(error: SSEError): boolean {
     if (options.reconnect?.enabled === false) {
       return false;
     }
 
     const maxRetries = options.reconnect?.maxRetries ?? Infinity;
+    if (reconnectAttempt >= maxRetries) {
+      return false;
+    }
 
-    return reconnectAttempt < maxRetries;
+    if (options.retry?.shouldRetry) {
+      return options.retry.shouldRetry(error);
+    }
+
+    return true;
   }
 
   async function reconnect(currentGeneration: number, triggerError: SSEError): Promise<void> {
@@ -355,9 +418,17 @@ export function createLocalSSEClient<Events extends EventMap>(
 
     state.setStatus("reconnecting");
 
-    const delay = calculateReconnectDelay(reconnectAttempt, options.reconnect, {
-      serverRetry: serverRetryDelay
-    });
+    const delay =
+      options.retry?.getDelay !== undefined
+        ? options.retry.getDelay({
+            attempt: reconnectAttempt,
+            error: triggerError,
+            serverRetry: serverRetryDelay
+          })
+        : calculateReconnectDelay(reconnectAttempt, options.reconnect, {
+            serverRetry: serverRetryDelay
+          });
+
     callDiagnostic(options.diagnostics?.onReconnectScheduled, {
       attempt: reconnectAttempt,
       delay,
@@ -405,9 +476,9 @@ export function createLocalSSEClient<Events extends EventMap>(
     callDiagnostic(options.diagnostics?.onAuthRefresh, { error: state.getError()! });
 
     try {
-      const shouldRetry = await refreshAuth(options.auth ?? {});
+      const shouldRetryAfterRefresh = await refreshAuth(options.auth ?? {});
 
-      if (!shouldRetry) {
+      if (!shouldRetryAfterRefresh) {
         state.setStatus("error");
         return;
       }

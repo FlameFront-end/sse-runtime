@@ -1,6 +1,7 @@
 import { createSSEClientState } from "../client/client-state";
 import { createLocalSSEClient } from "../client/create-local-sse-client";
 import type { SSEClient, SSEClientDependencies } from "../client/create-local-sse-client";
+import { buildEnsureOpen } from "../client/build-ensure-open";
 import {
   dispatchSSEEvent,
   parseEventPayload,
@@ -9,6 +10,7 @@ import {
 import { normalizeError } from "../errors/sse-error";
 import type { ParsedSSEEvent } from "../parser/parse-sse-chunk";
 import type {
+  DisconnectDiagnosticInfo,
   EventHandler,
   EventMap,
   SSEAnyEventHandler,
@@ -56,6 +58,12 @@ export function createCoordinatedSSEClient<Events extends EventMap>(
   return {
     connect,
     disconnect,
+
+    ensureOpen: buildEnsureOpen(
+      () => options.enabled !== false,
+      state,
+      () => void connect()
+    ),
 
     subscribeEvent<EventName extends keyof Events>(
       eventName: EventName,
@@ -132,22 +140,41 @@ export function createCoordinatedSSEClient<Events extends EventMap>(
     channel?.close();
     channel = null;
     state.setStatus("closed");
+    callDiagnostic(options.diagnostics?.onDisconnect, {
+      url: options.url,
+      reason: "manual"
+    });
+  }
+
+  function buildLeaderDiagnostics(): SSEClientOptions<Events>["diagnostics"] {
+    if (!options.diagnostics) return undefined;
+    return {
+      ...options.diagnostics,
+      onDisconnect: (info: DisconnectDiagnosticInfo) => {
+        if (info.reason !== "manual") {
+          callDiagnostic(options.diagnostics?.onDisconnect, info);
+        }
+      }
+    };
   }
 
   function becomeLeader(): void {
     callDiagnostic(options.diagnostics?.onCoordinationRoleChange, { role: "leader" });
-    const leaderEngine = createLocalSSEClient(options, {
-      ...dependencies,
-      initialLastEventId: lastEventId,
-      onStreamEvent: async (event) => {
-        if (event.id !== undefined) {
-          lastEventId = event.id;
-        }
+    const leaderEngine = createLocalSSEClient(
+      { ...options, diagnostics: buildLeaderDiagnostics() },
+      {
+        ...dependencies,
+        initialLastEventId: lastEventId,
+        onStreamEvent: async (event) => {
+          if (event.id !== undefined) {
+            lastEventId = event.id;
+          }
 
-        channel?.post({ type: "event", event });
-        await callSubscribers(event);
+          channel?.post({ type: "event", event });
+          await callSubscribers(event);
+        }
       }
-    });
+    );
     engine = leaderEngine;
 
     let forwardStatus = false;

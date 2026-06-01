@@ -24,6 +24,7 @@ function createMockClient(initialStatus: SSEConnectionStatus = "closed") {
     getError: () => error,
     connect: vi.fn(async () => undefined),
     disconnect: vi.fn(),
+    ensureOpen: vi.fn(async () => true),
     subscribeEvent: vi.fn(() => () => undefined),
     subscribeAnyEvent: vi.fn((handler: SSEAnyEventHandler) => {
       anyEventHandlers.add(handler);

@@ -214,6 +214,63 @@ createSSEClient({
 
 All tabs with the same `key` share one connection. The first tab to call `connect()` becomes the leader and opens the stream. Other tabs follow, receiving events via `BroadcastChannel`. When the leader tab closes, a follower takes over automatically.
 
+### Waiting for connection readiness
+
+Use `ensureOpen` when you need the stream to be active before performing an action (e.g. sending a command that the server processes over the stream):
+
+```ts
+const client = createSSEClient({ key: ["chat"], url: "/stream" });
+await client.connect();
+
+async function sendCommand(payload: unknown) {
+  const isOpen = await client.ensureOpen({ timeout: 30_000 });
+  if (!isOpen) throw new Error("Connection could not be established");
+  await fetch("/api/command", { method: "POST", body: JSON.stringify(payload) });
+}
+```
+
+`ensureOpen` is idempotent — calling it while already open resolves immediately. Multiple concurrent callers all share the same wait and receive the same result.
+
+### Open timeout
+
+Abort the HTTP connection attempt if the server does not respond within a time limit:
+
+```ts
+createSSEClient({
+  key: ["chat"],
+  url: "/stream",
+  openTimeout: 30_000 // abort if the response header is not received within 30 s
+});
+```
+
+The timeout covers the period from request start through accepted SSE response. It does not apply to the stream body once the connection is open. An aborted attempt is treated like any other transport error and triggers a reconnect if `reconnect.enabled` is `true`.
+
+### Custom retry policy
+
+By default all errors are retried up to `reconnect.maxRetries` (default: unlimited). Use `retry` to override which errors trigger a reconnect and how long to wait:
+
+```ts
+createSSEClient({
+  key: ["chat"],
+  url: "/stream",
+  reconnect: { maxRetries: 10 },
+  retry: {
+    shouldRetry: (error) => {
+      if (error.status === 401 || error.status === 403) return false; // auth errors are terminal
+      if (error.status === 429) return true; // always retry rate-limit
+      if (error.status !== undefined && error.status >= 400 && error.status < 500) return false;
+      return true;
+    },
+    getDelay: (ctx) => {
+      if (ctx.error.status === 429) return 10_000; // fixed delay for rate-limit
+      return ctx.serverRetry ?? 5_000; // honor server retry or fall back
+    }
+  }
+});
+```
+
+`reconnect.maxRetries` is always a hard cap. `shouldRetry` is an additional per-error filter applied within that cap — not a way to exceed it.
+
 ### Diagnostics / observability
 
 ```ts
@@ -224,6 +281,12 @@ createSSEClient({
     onAttempt: ({ attempt, url }) => {
       console.log(`[SSE] connecting to ${url} (attempt ${attempt})`);
     },
+    onOpen: ({ url }) => {
+      console.log(`[SSE] open: ${url}`);
+    },
+    onDisconnect: ({ url, reason }) => {
+      console.log(`[SSE] disconnected (${reason}): ${url}`);
+    },
     onReconnectScheduled: ({ attempt, delay, error }) => {
       console.warn(`[SSE] reconnect #${attempt} in ${delay}ms after:`, error.message);
     },
@@ -232,12 +295,18 @@ createSSEClient({
     },
     onCoordinationRoleChange: ({ role }) => {
       console.log(`[SSE] tab is now ${role}`);
+    },
+    onRawEvent: ({ event, data, id, timestamp }) => {
+      console.debug(`[SSE] event "${event}" id=${id ?? "-"} at ${timestamp}`, data);
+    },
+    onParseError: ({ error, eventName }) => {
+      console.error(`[SSE] parse error for "${eventName}":`, error);
     }
   }
 });
 ```
 
-Errors thrown inside diagnostic callbacks are silently ignored and do not affect the stream.
+All callbacks are non-critical — errors thrown inside them are silently ignored and do not affect the stream.
 
 ### Runtime event subscription
 
