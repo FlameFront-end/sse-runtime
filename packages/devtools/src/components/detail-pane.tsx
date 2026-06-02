@@ -2,6 +2,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { DevtoolsClientRecord, DevtoolsEventEntry } from "../registry/types";
 import { C, S, statusColor, statusLabel } from "../theme/tokens";
 import { fmtAgo, fmtData, fmtDuration, fmtTime } from "../lib/format";
+import { RATE_WINDOW_MS } from "../constants";
 import { Btn } from "./btn";
 import { EventRow } from "./event-row";
 import { StatusDot } from "./status-dot";
@@ -11,8 +12,6 @@ type DetailPaneProps = {
   readonly isCompact: boolean;
   readonly onClear: () => void;
 };
-
-const RATE_WINDOW_MS = 5000;
 
 export const DetailPane = memo(function DetailPane({
   record,
@@ -46,11 +45,11 @@ export const DetailPane = memo(function DetailPane({
 
   useEffect(() => {
     if (paused) return;
-    if (autoScroll && record.events.length !== prevLenRef.current && listRef.current) {
+    if (autoScroll && filtered.length !== prevLenRef.current && listRef.current) {
       listRef.current.scrollTop = listRef.current.scrollHeight;
     }
-    prevLenRef.current = record.events.length;
-  }, [record.events.length, autoScroll, paused]);
+    prevLenRef.current = filtered.length;
+  }, [filtered.length, autoScroll, paused]);
 
   const handleScroll = useCallback(() => {
     if (!listRef.current) return;
@@ -62,21 +61,27 @@ export const DetailPane = memo(function DetailPane({
   const filterByType = useCallback((type: string) => setQuery(type), []);
   const exportLog = useCallback(() => exportEvents(record), [record]);
 
+  const handleClear = useCallback(() => {
+    frozenRef.current = [];
+    frozenTotalRef.current = 0;
+    onClear();
+  }, [onClear]);
+
   const eventsPerSec = useMemo(() => {
     if (record.lastEventAt === null) return 0;
     const since = now - RATE_WINDOW_MS;
     let count = 0;
-    for (const e of record.events) if (e.timestamp >= since) count += 1;
+    for (const t of record.recentEventTimestamps) if (t >= since) count += 1;
     return Math.round((count / (RATE_WINDOW_MS / 1000)) * 10) / 10;
-  }, [record.events, record.lastEventAt, now]);
+  }, [record.recentEventTimestamps, record.lastEventAt, now]);
 
-  const metrics: ReadonlyArray<readonly [string, string | number]> = [
+  const metrics: ReadonlyArray<readonly [string, string | number, number?]> = [
     ["Events received", record.totalEvents],
     ["Events / sec", eventsPerSec],
     ["Uptime", record.connectedAt ? fmtDuration(record.connectedAt, now) : "—"],
     ["Reconnects", record.reconnectCount],
-    ["Last event", record.lastEventAt ? fmtAgo(record.lastEventAt, now) : "—"],
-    ["In log", record.events.length]
+    ["In log", sourceEvents.length],
+    ["Last event", record.lastEventAt ? fmtAgo(record.lastEventAt, now) : "—", 108]
   ];
 
   return (
@@ -135,7 +140,7 @@ export const DetailPane = memo(function DetailPane({
         >
           <Btn
             variant="primary"
-            onClick={() => void record.client.connect()}
+            onClick={() => void record.client.connect().catch(() => undefined)}
             style={{ flex: isCompact ? 1 : undefined, height: isCompact ? 30 : undefined }}
           >
             Connect
@@ -179,12 +184,14 @@ export const DetailPane = memo(function DetailPane({
           flexShrink: 0
         }}
       >
-        {metrics.map(([label, val]) => (
+        {metrics.map(([label, val, fixedWidth]) => (
           <div
             key={label}
             style={{
               flex: isCompact ? "0 0 auto" : undefined,
-              minWidth: 92,
+              width: fixedWidth,
+              minWidth: fixedWidth ?? 92,
+              flexShrink: fixedWidth ? 0 : undefined,
               border: `1px solid ${C.border}`,
               borderRadius: 8,
               padding: isCompact ? "7px 10px" : "8px 10px",
@@ -220,9 +227,9 @@ export const DetailPane = memo(function DetailPane({
       >
         <span style={{ color: C.textMuted, fontWeight: 500, fontSize: 12 }}>
           Events log{" "}
-          {record.totalEvents > record.events.length && (
+          {record.totalEvents > sourceEvents.length && (
             <span style={{ color: C.textDim }}>
-              (last {record.events.length} of {record.totalEvents})
+              (last {sourceEvents.length} of {record.totalEvents})
             </span>
           )}
           {paused && bufferedWhilePaused > 0 && (
@@ -240,7 +247,7 @@ export const DetailPane = memo(function DetailPane({
           <Btn onClick={exportLog} style={{ height: isCompact ? 30 : undefined }}>
             Export
           </Btn>
-          <Btn onClick={onClear} style={{ height: isCompact ? 30 : undefined }}>
+          <Btn onClick={handleClear} style={{ height: isCompact ? 30 : undefined }}>
             Clear
           </Btn>
         </div>
@@ -322,6 +329,8 @@ function exportEvents(record: DevtoolsClientRecord): void {
     key: record.key,
     status: record.status,
     totalEvents: record.totalEvents,
+    eventsInLog: record.events.length,
+    truncated: record.totalEvents > record.events.length,
     exportedAt: new Date().toISOString(),
     events: record.events.map((e) => ({
       type: e.type,

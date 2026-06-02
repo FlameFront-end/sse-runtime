@@ -15,6 +15,7 @@ export type DevtoolsClientRecord = {
   readonly status: SSEConnectionStatus;
   readonly error: SSEError | null;
   readonly events: readonly DevtoolsEventEntry[];
+  readonly recentEventTimestamps: readonly number[];
   readonly totalEvents: number;
   readonly connectedAt: number | null;
   readonly firstConnectedAt: number | null;

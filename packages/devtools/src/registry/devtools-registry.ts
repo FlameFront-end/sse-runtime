@@ -3,7 +3,7 @@ import type {
   SSEDevtoolsRegistration
 } from "@flamefrontend/sse-runtime-react";
 import type { SSEError } from "@flamefrontend/sse-runtime-core";
-import { MAX_EVENTS } from "../constants";
+import { MAX_EVENTS, RATE_TIMESTAMP_CAP, RATE_WINDOW_MS } from "../constants";
 import type { DevtoolsClientRecord, DevtoolsEventEntry, RegistrySnapshot } from "./types";
 
 export type { DevtoolsClientRecord, DevtoolsEventEntry, RegistrySnapshot } from "./types";
@@ -23,6 +23,30 @@ function sameError(a: SSEError | null, b: SSEError | null): boolean {
   if (a === b) return true;
   if (!a || !b) return false;
   return a.kind === b.kind && a.message === b.message && a.status === b.status;
+}
+
+function snapshotData(data: unknown): unknown {
+  if (data === null || typeof data !== "object") return data;
+  try {
+    return typeof structuredClone === "function"
+      ? structuredClone(data)
+      : JSON.parse(JSON.stringify(data));
+  } catch {
+    try {
+      return JSON.parse(JSON.stringify(data));
+    } catch {
+      return data;
+    }
+  }
+}
+
+function pruneTimestamps(existing: readonly number[], next: number): number[] {
+  const cutoff = next - RATE_WINDOW_MS;
+  let start = 0;
+  while (start < existing.length && existing[start] < cutoff) start += 1;
+  const kept = start > 0 ? existing.slice(start) : existing.slice();
+  kept.push(next);
+  return kept.length > RATE_TIMESTAMP_CAP ? kept.slice(kept.length - RATE_TIMESTAMP_CAP) : kept;
 }
 
 export function createDevtoolsRegistry(options: { maxEvents?: number } = {}): DevtoolsRegistry {
@@ -76,6 +100,7 @@ export function createDevtoolsRegistry(options: { maxEvents?: number } = {}): De
         status: initialStatus,
         error: client.getError(),
         events: [],
+        recentEventTimestamps: [],
         totalEvents: 0,
         connectedAt: alreadyOpen ? now : null,
         firstConnectedAt: alreadyOpen ? now : null,
@@ -112,7 +137,7 @@ export function createDevtoolsRegistry(options: { maxEvents?: number } = {}): De
         const entry: DevtoolsEventEntry = {
           id: `evt-${(eventCounter += 1)}`,
           type: event.type,
-          data: event.data,
+          data: snapshotData(event.data),
           timestamp: Date.now()
         };
         const events =
@@ -121,6 +146,7 @@ export function createDevtoolsRegistry(options: { maxEvents?: number } = {}): De
             : [...current.events, entry];
         patch(id, {
           events,
+          recentEventTimestamps: pruneTimestamps(current.recentEventTimestamps, entry.timestamp),
           totalEvents: current.totalEvents + 1,
           lastEventAt: entry.timestamp
         });
@@ -149,7 +175,7 @@ export function createDevtoolsRegistry(options: { maxEvents?: number } = {}): De
     },
 
     clearEvents(id: string): void {
-      patch(id, { events: [], totalEvents: 0, lastEventAt: null });
+      patch(id, { events: [], recentEventTimestamps: [], totalEvents: 0, lastEventAt: null });
     }
   };
 }

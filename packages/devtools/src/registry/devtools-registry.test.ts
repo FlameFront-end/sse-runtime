@@ -267,6 +267,41 @@ describe("createDevtoolsRegistry", () => {
     expect(record.totalEvents).toBe(MAX_EVENTS + 10);
   });
 
+  it("snapshots event payloads so later mutation of the source object is not reflected", async () => {
+    vi.useRealTimers();
+    const registry = createDevtoolsRegistry();
+    const client = createMockClient("open");
+
+    registry.register({ id: "k", url: "/e", client });
+    const payload = { text: "hello" };
+    client._emitEvent("message", payload);
+    await flushFrame();
+
+    payload.text = "mutated";
+
+    const record = [...registry.getSnapshot().values()][0];
+    expect(record.events[0].data).toEqual({ text: "hello" });
+  });
+
+  it("tracks recentEventTimestamps for the rate metric and resets them on clearEvents", async () => {
+    vi.useRealTimers();
+    const registry = createDevtoolsRegistry();
+    const client = createMockClient("open");
+
+    registry.register({ id: "k", url: "/e", client });
+    client._emitEvent("ping", 1);
+    client._emitEvent("ping", 2);
+    await flushFrame();
+
+    expect([...registry.getSnapshot().values()][0].recentEventTimestamps).toHaveLength(2);
+
+    const id = [...registry.getSnapshot().keys()][0];
+    registry.clearEvents(id);
+    await flushFrame();
+
+    expect([...registry.getSnapshot().values()][0].recentEventTimestamps).toHaveLength(0);
+  });
+
   it("clears the event log without resetting totalEvents counter", async () => {
     vi.useRealTimers();
     const registry = createDevtoolsRegistry();
