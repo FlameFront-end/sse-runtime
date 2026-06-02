@@ -1,5 +1,21 @@
 # @flamefrontend/sse-runtime-react
 
+## 0.5.0
+
+### Minor Changes
+
+- 0cbeac0: `useSSE` now returns `client`, `ensureOpen`, and `reconnect` alongside `status`,
+  `error`, `connect`, and `disconnect`, so readiness-before-action and wildcard
+  subscriptions are reachable without dropping down to `SSEProvider`. Add the
+  `useSSEAnyEvent(connection, handler)` hook for subscribing to every event
+  regardless of name — useful when the event discriminator lives in the payload.
+
+### Patch Changes
+
+- Updated dependencies [0cbeac0]
+- Updated dependencies [0cbeac0]
+  - @flamefrontend/sse-runtime-core@0.5.0
+
 ## 0.4.1
 
 ### Patch Changes
