@@ -62,6 +62,7 @@ export const GLOBAL_STYLES = `
     --sse-dt-btn-border: #d4d4d4;
     --sse-dt-btn-hover: #f5f5f5;
     --sse-dt-shadow: 0 24px 80px rgba(0, 0, 0, 0.16), 0 4px 24px rgba(0, 0, 0, 0.08);
+    --sse-dt-focus: rgba(10, 10, 10, 0.45);
   }
   .sse-dt[data-theme="dark"],
   .sse-dt-toggle[data-theme="dark"] {
@@ -81,6 +82,7 @@ export const GLOBAL_STYLES = `
     --sse-dt-btn-border: #333333;
     --sse-dt-btn-hover: #1f1f1f;
     --sse-dt-shadow: 0 24px 80px rgba(0, 0, 0, 0.5), 0 4px 24px rgba(0, 0, 0, 0.36);
+    --sse-dt-focus: rgba(250, 250, 250, 0.5);
   }
   @keyframes sse-dt-pulse {
     0%, 100% { opacity: 1; }
@@ -104,10 +106,19 @@ export const GLOBAL_STYLES = `
   .sse-dt .sse-dt-soft-button:hover {
     background: var(--sse-dt-btn-hover) !important;
   }
+  .sse-dt:focus,
+  .sse-dt button:focus,
+  .sse-dt input:focus,
+  .sse-dt [role="separator"]:focus,
+  .sse-dt-toggle:focus {
+    outline: none;
+  }
   .sse-dt button:focus-visible,
-  .sse-dt input:focus-visible {
-    outline: 2px solid var(--sse-dt-accent);
-    outline-offset: 2px;
+  .sse-dt input:focus-visible,
+  .sse-dt [role="separator"]:focus-visible,
+  .sse-dt-toggle:focus-visible {
+    outline: 1.5px solid var(--sse-dt-focus);
+    outline-offset: 1px;
   }
   .sse-dt ::selection { background: var(--sse-dt-accent); color: var(--sse-dt-bg); }
   .sse-dt ::-webkit-scrollbar { width: 8px; height: 8px; }

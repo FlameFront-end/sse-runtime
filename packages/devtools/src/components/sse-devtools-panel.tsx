@@ -3,10 +3,12 @@ import {
   useEffect,
   useRef,
   useState,
+  type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent
 } from "react";
 import type { RegistrySnapshot } from "../registry/types";
 import { C, GLOBAL_STYLES } from "../theme/tokens";
+import { isEditableTarget } from "../lib/shortcut";
 import { loadSettings, patchSettings, type ThemePreference } from "../lib/persistence";
 import { ConnectionList } from "./connection-list";
 import { DetailPane, EmptyDetail } from "./detail-pane";
@@ -50,6 +52,7 @@ export function SSEDevtoolsPanel({
   const [isCompact, setIsCompact] = useState(readIsCompact);
   const dragging = useRef(false);
   const heightRef = useRef(height);
+  const panelRef = useRef<HTMLDivElement>(null);
   const theme = themePreference === "system" ? systemTheme : themePreference;
 
   useEffect(() => {
@@ -97,7 +100,7 @@ export function SSEDevtoolsPanel({
   useEffect(() => {
     if (!isOpen || typeof window === "undefined") return;
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
+      if (e.key === "Escape" && !isEditableTarget(e.target)) {
         e.preventDefault();
         onToggle();
       }
@@ -105,6 +108,15 @@ export function SSEDevtoolsPanel({
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [isOpen, onToggle]);
+
+  useEffect(() => {
+    if (!isOpen || typeof document === "undefined") return;
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    panelRef.current?.focus({ preventScroll: true });
+    return () => {
+      previouslyFocused?.focus?.();
+    };
+  }, [isOpen]);
 
   const onResizeStart = useCallback((e: ReactPointerEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -130,6 +142,19 @@ export function SSEDevtoolsPanel({
     handle.addEventListener("pointermove", onMove);
     handle.addEventListener("pointerup", onUp);
     handle.addEventListener("pointercancel", onUp);
+  }, []);
+
+  const onResizeKeyDown = useCallback((e: ReactKeyboardEvent<HTMLDivElement>) => {
+    const step = e.shiftKey ? 48 : 16;
+    let delta = 0;
+    if (e.key === "ArrowUp") delta = step;
+    else if (e.key === "ArrowDown") delta = -step;
+    else return;
+    e.preventDefault();
+    const next = clampHeight(heightRef.current + delta);
+    heightRef.current = next;
+    setHeight(next);
+    patchSettings({ height: next });
   }, []);
 
   const setTheme = useCallback((next: ThemePreference) => {
@@ -159,10 +184,13 @@ export function SSEDevtoolsPanel({
 
       {isOpen && (
         <div
+          ref={panelRef}
           className="sse-dt"
           data-theme={theme}
           role="dialog"
+          aria-modal={false}
           aria-label="SSE DevTools"
+          tabIndex={-1}
           style={{
             position: "fixed",
             bottom: isCompact ? 8 : PANEL_INSET,
@@ -186,9 +214,15 @@ export function SSEDevtoolsPanel({
           <div
             className="sse-dt-resize-handle"
             onPointerDown={onResizeStart}
+            onKeyDown={onResizeKeyDown}
             role="separator"
+            aria-orientation="horizontal"
             aria-label="Resize panel"
-            title="Drag to resize"
+            aria-valuenow={Math.round(clampHeight(height))}
+            aria-valuemin={MIN_HEIGHT}
+            aria-valuemax={Math.round(getViewportHeight() * MAX_HEIGHT_RATIO)}
+            tabIndex={0}
+            title="Drag to resize (or focus and use arrow keys)"
             style={{
               position: "absolute",
               top: 0,

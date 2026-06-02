@@ -57,9 +57,14 @@ export function urlPath(url: string): string {
 }
 
 export function urlLabel(url: string): string {
+  const origin = typeof location !== "undefined" ? location.href : "http://localhost";
   try {
-    const parsed = new URL(url, "http://x");
-    return `${parsed.pathname}${parsed.search}`;
+    const parsed = new URL(url, origin);
+    const path = `${parsed.pathname}${parsed.search}`;
+    if (typeof location !== "undefined" && parsed.origin !== location.origin) {
+      return `${parsed.host}${path}`;
+    }
+    return path;
   } catch {
     return url;
   }
