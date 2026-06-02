@@ -1,5 +1,7 @@
 import type { SSEError } from "./errors";
 
+export type CoordinationRole = "leader" | "follower";
+
 export type RawEventDiagnosticInfo = {
   readonly event: string;
   readonly data: string;
@@ -7,6 +9,7 @@ export type RawEventDiagnosticInfo = {
   readonly retry: number | undefined;
   readonly timestamp: number;
   readonly connectionKey: readonly string[];
+  readonly role?: CoordinationRole;
 };
 
 export type DisconnectReason = "manual" | "error" | "stream-ended";

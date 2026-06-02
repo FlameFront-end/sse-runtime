@@ -102,6 +102,29 @@ describe("useSSE", () => {
     expect(client.connect).toHaveBeenCalledTimes(1);
   });
 
+  it("exposes the client, ensureOpen, and reconnect from the result", async () => {
+    const client = createFakeClient();
+    createSSEClient.mockReturnValue(client);
+    let captured: ReturnType<typeof useSSE> | undefined;
+
+    function TestComponent(): ReactElement {
+      captured = useSSE({ key: ["chat", "demo"], url: "/stream" });
+      return <span />;
+    }
+
+    render(<TestComponent />);
+
+    await waitFor(() => expect(client.connect).toHaveBeenCalledTimes(1));
+
+    expect(captured?.client).toBe(client);
+
+    await captured?.reconnect();
+    expect(client.reconnect).toHaveBeenCalledTimes(1);
+
+    await captured?.ensureOpen({ timeout: 1000 });
+    expect(client.ensureOpen).toHaveBeenCalledWith({ timeout: 1000 });
+  });
+
   it("recreates the client when enabled changes", async () => {
     const firstClient = createFakeClient();
     const secondClient = createFakeClient();
@@ -182,10 +205,13 @@ async function resolveHeaders<Events extends EventMap>(
 function createFakeClient(): {
   readonly connect: ReturnType<typeof vi.fn<() => Promise<void>>>;
   readonly disconnect: ReturnType<typeof vi.fn<() => void>>;
+  readonly reconnect: ReturnType<typeof vi.fn<() => Promise<void>>>;
+  readonly ensureOpen: ReturnType<typeof vi.fn<() => Promise<boolean>>>;
   readonly getError: () => null;
   readonly getStatus: () => SSEConnectionStatus;
   readonly subscribeError: (listener: SSEErrorListener) => () => void;
   readonly subscribeStatus: (listener: SSEStatusListener) => () => void;
+  readonly subscribeAnyEvent: ReturnType<typeof vi.fn>;
   readonly emit: (status: SSEConnectionStatus) => void;
 } {
   let status: SSEConnectionStatus = "closed";
@@ -196,6 +222,9 @@ function createFakeClient(): {
   return {
     connect: vi.fn(async () => undefined),
     disconnect: vi.fn(),
+    reconnect: vi.fn(async () => undefined),
+    ensureOpen: vi.fn(async () => true),
+    subscribeAnyEvent: vi.fn(() => () => undefined),
     getError: () => error,
     getStatus: () => status,
     subscribeError(listener: SSEErrorListener): () => void {
