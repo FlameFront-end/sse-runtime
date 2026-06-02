@@ -1,6 +1,7 @@
 import {
   createSSEClient,
   serializeSSEKey,
+  type CoordinationRole,
   type EventMap,
   type SSEClientOptions
 } from "@flamefrontend/sse-runtime-core";
@@ -43,6 +44,7 @@ export function useSSE<Events extends EventMap>(
   const client = useMemo(() => createSSEClient(clientOptions), [clientOptions]);
   const [status, setStatus] = useState(client.getStatus);
   const [error, setError] = useState(client.getError);
+  const [role, setRole] = useState<CoordinationRole | null>(() => client.getRole?.() ?? null);
 
   useEffect(
     () =>
@@ -53,6 +55,11 @@ export function useSSE<Events extends EventMap>(
   );
 
   useEffect(() => client.subscribeError(setError), [client]);
+
+  useEffect(() => {
+    setRole(client.getRole?.() ?? null);
+    return client.subscribeRole?.(setRole);
+  }, [client]);
 
   useEffect(() => {
     if (options.enabled === false) {
@@ -88,6 +95,7 @@ export function useSSE<Events extends EventMap>(
   return {
     status,
     error,
+    role,
     connect,
     disconnect,
     reconnect,

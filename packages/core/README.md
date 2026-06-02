@@ -120,6 +120,31 @@ const client = createSSEClient<Events>({
 });
 ```
 
+`createBearerAuth(getToken, options?)` builds the `headers` + `auth` pair for the
+common case — the token is resolved before every attempt and again on `401`:
+
+```ts
+createSSEClient<Events>({
+  key: ["chat", chatId],
+  url: `/api/chats/${chatId}/stream`,
+  ...createBearerAuth(getAccessToken)
+});
+```
+
+## Reconnect Notifications
+
+`attachReconnectNotifications(client, handlers)` maps status transitions to
+reconnect-lifecycle callbacks (drops and recoveries only, not the initial connect
+or a manual disconnect). It returns a cleanup function.
+
+```ts
+const detach = attachReconnectNotifications(client, {
+  onReconnecting: () => showToast("Reconnecting…"),
+  onReconnected: () => dismissToast(),
+  onFailed: () => showToast("Connection lost")
+});
+```
+
 ## Single-Tab Coordination
 
 ```ts

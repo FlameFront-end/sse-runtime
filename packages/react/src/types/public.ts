@@ -1,4 +1,5 @@
 import type {
+  CoordinationRole,
   EventMap,
   SSEClient,
   SSEConnectionStatus,
@@ -8,6 +9,7 @@ import type {
 export type UseSSEResult<Events extends EventMap = EventMap> = {
   readonly status: SSEConnectionStatus;
   readonly error: SSEError | null;
+  readonly role: CoordinationRole | null;
   readonly connect: () => Promise<void>;
   readonly disconnect: () => void;
   readonly reconnect: () => Promise<void>;
