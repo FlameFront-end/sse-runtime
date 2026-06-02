@@ -32,6 +32,7 @@ import { buildEnsureOpen } from "./build-ensure-open";
 export type SSEClient<Events extends EventMap = EventMap> = {
   readonly connect: () => Promise<void>;
   readonly disconnect: () => void;
+  readonly reconnect: () => Promise<void>;
   readonly ensureOpen: (options?: { readonly timeout?: number }) => Promise<boolean>;
   readonly getError: () => SSEError | null;
   readonly getStatus: () => SSEConnectionStatus;
@@ -121,6 +122,27 @@ export function createLocalSSEClient<Events extends EventMap>(
         url: options.url,
         reason: "manual"
       });
+    },
+
+    async reconnect(): Promise<void> {
+      hasManualDisconnect = false;
+      reconnectAttempt = 0;
+      authRefreshAttempt = 0;
+      serverRetryDelay = undefined;
+      state.resetError();
+      abortController?.abort();
+
+      const controller = createConnectionController();
+      const currentConnectPromise = openConnection(controller, "connecting");
+      connectPromise = currentConnectPromise;
+
+      try {
+        await currentConnectPromise;
+      } finally {
+        if (connectPromise === currentConnectPromise) {
+          connectPromise = null;
+        }
+      }
     },
 
     ensureOpen: buildEnsureOpen(state, () => void theClient.connect()),

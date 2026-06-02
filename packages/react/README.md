@@ -143,8 +143,15 @@ function ConnectionBadge() {
   outside an `SSEProvider`.
 - **`useSSEEvent(client, name, handler)`** — subscribes to a named event; the
   handler is kept in a ref and unsubscribes on unmount or when `name` changes.
+- **`useSSEAnyEvent(client, handler)`** — subscribes to every event regardless of
+  name, for streams whose discriminator lives in the payload. The handler
+  receives `{ type, data }` and is kept in a ref.
 - **`useSSEStatus(client)`** — returns `{ status, error }` for components that
   only display connection state.
+
+`useSSE` also returns `client`, `ensureOpen`, and `reconnect`, so a component
+can wait for readiness before an action or force a refresh without reaching for
+`SSEProvider`.
 
 ## Devtools
 

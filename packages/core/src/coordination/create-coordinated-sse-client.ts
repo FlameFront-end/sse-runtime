@@ -18,7 +18,7 @@ import type {
   SSEError
 } from "../types/public";
 import type { CoordinationBackend, CoordinationChannel } from "./coordination-backend";
-import type { CoordinationMessage } from "./coordination-message";
+import type { CoordinationDiagnostic, CoordinationMessage } from "./coordination-message";
 import { createChannelName } from "./create-channel-name";
 
 /**
@@ -58,6 +58,7 @@ export function createCoordinatedSSEClient<Events extends EventMap>(
   return {
     connect,
     disconnect,
+    reconnect,
 
     ensureOpen: buildEnsureOpen(state, () => void connect()),
 
@@ -125,6 +126,18 @@ export function createCoordinatedSSEClient<Events extends EventMap>(
       });
   }
 
+  async function reconnect(): Promise<void> {
+    if (engine) {
+      await engine.reconnect();
+
+      return;
+    }
+
+    if (!isActive) {
+      await connect();
+    }
+  }
+
   function disconnect(): void {
     isActive = false;
     followerGeneration += 1;
@@ -143,13 +156,27 @@ export function createCoordinatedSSEClient<Events extends EventMap>(
   }
 
   function buildLeaderDiagnostics(): SSEClientOptions<Events>["diagnostics"] {
-    if (!options.diagnostics) return undefined;
+    const consumer = options.diagnostics;
+
     return {
-      ...options.diagnostics,
+      onAttempt: consumer?.onAttempt,
+      onReconnectScheduled: consumer?.onReconnectScheduled,
+      onAuthRefresh: consumer?.onAuthRefresh,
+      onCoordinationRoleChange: consumer?.onCoordinationRoleChange,
+      onParseError: consumer?.onParseError,
+      onRawEvent: (info) => {
+        callDiagnostic(consumer?.onRawEvent, { ...info, role: "leader" });
+        channel?.post({ type: "diagnostic", diagnostic: { kind: "rawEvent", info } });
+      },
+      onOpen: (info) => {
+        callDiagnostic(consumer?.onOpen, info);
+        channel?.post({ type: "diagnostic", diagnostic: { kind: "open", info } });
+      },
       onDisconnect: (info: DisconnectDiagnosticInfo) => {
         if (info.reason !== "manual") {
-          callDiagnostic(options.diagnostics?.onDisconnect, info);
+          callDiagnostic(consumer?.onDisconnect, info);
         }
+        channel?.post({ type: "diagnostic", diagnostic: { kind: "disconnect", info } });
       }
     };
   }
@@ -239,6 +266,13 @@ export function createCoordinatedSSEClient<Events extends EventMap>(
       return;
     }
 
+    if (message.type === "diagnostic") {
+      const diagnostic = message.diagnostic;
+      enqueueFollowerTask(() => applyRemoteDiagnostic(diagnostic));
+
+      return;
+    }
+
     if (message.type === "event") {
       const event = message.event;
 
@@ -256,6 +290,22 @@ export function createCoordinatedSSEClient<Events extends EventMap>(
         await callSubscribers(event);
       });
     }
+  }
+
+  function applyRemoteDiagnostic(diagnostic: CoordinationDiagnostic): void {
+    if (diagnostic.kind === "rawEvent") {
+      callDiagnostic(options.diagnostics?.onRawEvent, { ...diagnostic.info, role: "follower" });
+
+      return;
+    }
+
+    if (diagnostic.kind === "open") {
+      callDiagnostic(options.diagnostics?.onOpen, diagnostic.info);
+
+      return;
+    }
+
+    callDiagnostic(options.diagnostics?.onDisconnect, diagnostic.info);
   }
 
   function enqueueFollowerTask(task: () => Promise<void> | void): void {
@@ -292,6 +342,10 @@ export function createCoordinatedSSEClient<Events extends EventMap>(
     const parsed = parseEventPayloadStrict(event.data, event.event);
 
     if (!parsed.ok) {
+      callDiagnostic(options.diagnostics?.onParseError, {
+        error: parsed.error,
+        eventName: event.event
+      });
       state.setError(parsed.error);
       return;
     }

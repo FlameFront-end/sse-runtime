@@ -54,6 +54,7 @@ the raw string payload.
 
 - `connect(): Promise<void>`
 - `disconnect(): void`
+- `reconnect(): Promise<void>` — force a fresh connection even when already open, resuming from the last event id; recovers a stream that looks open but has gone silent
 - `ensureOpen(options?: { timeout?: number }): Promise<boolean>` — wait until the stream is open; starts connecting if needed
 - `getStatus(): SSEConnectionStatus`
 - `getError(): SSEError | null`
@@ -85,6 +86,16 @@ honors server `retry` fields, and stops reconnecting after manual
 `disconnect()`.
 
 When events include `id`, the latest id is sent as `Last-Event-ID` on reconnect.
+
+`attachLifecycleResume(client, options?)` reconnects when the page regains focus,
+comes back online, or becomes visible again. It returns a cleanup function and is
+a no-op outside the browser:
+
+```ts
+import { attachLifecycleResume } from "@flamefrontend/sse-runtime-core";
+
+const detach = attachLifecycleResume(client, { strategy: "reconnect" });
+```
 
 ## Auth Refresh
 

@@ -270,6 +270,183 @@ describe("single-tab coordination", () => {
 
     follower.disconnect();
   });
+
+  it("forwards raw-event diagnostics to followers with the coordination role stamped", async () => {
+    const harness = createCoordinationHarness();
+    const leaderStream = createControlledStream();
+    const leaderRaw: Array<{ event: string; role?: string }> = [];
+    const followerRaw: Array<{ event: string; role?: string; data: string }> = [];
+
+    const leader = createSSEClient<ChatEvents>(
+      {
+        key: ["chat"],
+        url: "/stream",
+        coordination: { enabled: true, mode: "single-tab" },
+        diagnostics: { onRawEvent: (info) => leaderRaw.push(info) }
+      },
+      {
+        transport: async () => new Response(leaderStream.readable),
+        coordinationBackend: harness.createBackend()
+      }
+    );
+    const follower = createSSEClient<ChatEvents>(
+      {
+        key: ["chat"],
+        url: "/stream",
+        coordination: { enabled: true, mode: "single-tab" },
+        diagnostics: { onRawEvent: (info) => followerRaw.push(info) }
+      },
+      {
+        transport: async () => new Response(createControlledStream().readable),
+        coordinationBackend: harness.createBackend()
+      }
+    );
+
+    await leader.connect();
+    await waitFor(() => leader.getStatus() === "open");
+    await follower.connect();
+
+    leaderStream.enqueue('event: message\ndata: {"text":"hi"}\n\n');
+
+    await waitFor(() => followerRaw.length === 1);
+
+    expect(leaderRaw[0]).toMatchObject({ event: "message", role: "leader" });
+    expect(followerRaw[0]).toMatchObject({
+      event: "message",
+      role: "follower",
+      data: '{"text":"hi"}'
+    });
+
+    leader.disconnect();
+    follower.disconnect();
+  });
+
+  it("forwards onOpen to a connected follower when the leader stream opens", async () => {
+    const harness = createCoordinationHarness();
+    const followerOpen: Array<{ url: string }> = [];
+
+    const leader = createSSEClient<ChatEvents>(
+      {
+        key: ["chat"],
+        url: "/stream",
+        coordination: { enabled: true, mode: "single-tab" }
+      },
+      {
+        transport: async () => new Response(createControlledStream().readable),
+        coordinationBackend: harness.createBackend()
+      }
+    );
+    const follower = createSSEClient<ChatEvents>(
+      {
+        key: ["chat"],
+        url: "/stream",
+        coordination: { enabled: true, mode: "single-tab" },
+        diagnostics: { onOpen: (info) => followerOpen.push(info) }
+      },
+      {
+        transport: async () => new Response(createControlledStream().readable),
+        coordinationBackend: harness.createBackend()
+      }
+    );
+
+    await leader.connect();
+    await waitFor(() => leader.getStatus() === "open");
+    await follower.connect();
+    followerOpen.length = 0;
+
+    await leader.reconnect();
+
+    await waitFor(() => followerOpen.length >= 1);
+    expect(followerOpen[0]).toEqual({ url: "/stream" });
+
+    leader.disconnect();
+    follower.disconnect();
+  });
+
+  it("raises onParseError on a follower with a named subscriber", async () => {
+    const harness = createCoordinationHarness();
+    const leaderStream = createControlledStream();
+    const followerParseErrors: Array<{ eventName: string }> = [];
+
+    const leader = createSSEClient<ChatEvents>(
+      {
+        key: ["chat"],
+        url: "/stream",
+        coordination: { enabled: true, mode: "single-tab" }
+      },
+      {
+        transport: async () => new Response(leaderStream.readable),
+        coordinationBackend: harness.createBackend()
+      }
+    );
+    const follower = createSSEClient<ChatEvents>(
+      {
+        key: ["chat"],
+        url: "/stream",
+        coordination: { enabled: true, mode: "single-tab" },
+        diagnostics: { onParseError: (info) => followerParseErrors.push(info) }
+      },
+      {
+        transport: async () => new Response(createControlledStream().readable),
+        coordinationBackend: harness.createBackend()
+      }
+    );
+
+    await leader.connect();
+    await waitFor(() => leader.getStatus() === "open");
+    await follower.connect();
+    follower.subscribeEvent("message", () => undefined);
+
+    leaderStream.enqueue("event: message\ndata: {bad json\n\n");
+
+    await waitFor(() => followerParseErrors.length === 1);
+    expect(followerParseErrors[0].eventName).toBe("message");
+
+    leader.disconnect();
+    follower.disconnect();
+  });
+
+  it("reconnects the leader engine without dropping followers", async () => {
+    const harness = createCoordinationHarness();
+    const leaderTransport = vi.fn(async () => new Response(createControlledStream().readable));
+
+    const leader = createSSEClient<ChatEvents>(
+      {
+        key: ["chat"],
+        url: "/stream",
+        coordination: { enabled: true, mode: "single-tab" }
+      },
+      {
+        transport: leaderTransport,
+        coordinationBackend: harness.createBackend()
+      }
+    );
+    const follower = createSSEClient<ChatEvents>(
+      {
+        key: ["chat"],
+        url: "/stream",
+        coordination: { enabled: true, mode: "single-tab" }
+      },
+      {
+        transport: async () => new Response(createControlledStream().readable),
+        coordinationBackend: harness.createBackend()
+      }
+    );
+
+    await leader.connect();
+    await waitFor(() => leader.getStatus() === "open");
+    await follower.connect();
+    await waitFor(() => follower.getStatus() === "open");
+
+    await leader.reconnect();
+    await waitFor(() => leaderTransport.mock.calls.length === 2);
+    await waitFor(() => leader.getStatus() === "open");
+
+    expect(follower.getStatus()).toBe("open");
+
+    leader.disconnect();
+    follower.disconnect();
+  });
 });
 
 function createCoordinatedClient(

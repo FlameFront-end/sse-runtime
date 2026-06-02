@@ -12,7 +12,9 @@ import { createReactClientOptions } from "./create-react-client-options";
 import { useLatestRef } from "./use-latest-ref";
 import type { UseSSEResult } from "../types/public";
 
-export function useSSE<Events extends EventMap>(options: SSEClientOptions<Events>): UseSSEResult {
+export function useSSE<Events extends EventMap>(
+  options: SSEClientOptions<Events>
+): UseSSEResult<Events> {
   const optionsRef = useLatestRef(options);
   const keySignature = useMemo(() => serializeSSEKey(options.key), [options.key]);
   const eventNamesSignature = useMemo(
@@ -77,11 +79,19 @@ export function useSSE<Events extends EventMap>(options: SSEClientOptions<Events
 
   const connect = useCallback(() => client.connect(), [client]);
   const disconnect = useCallback(() => client.disconnect(), [client]);
+  const reconnect = useCallback(() => client.reconnect(), [client]);
+  const ensureOpen = useCallback(
+    (ensureOptions?: { readonly timeout?: number }) => client.ensureOpen(ensureOptions),
+    [client]
+  );
 
   return {
     status,
     error,
     connect,
-    disconnect
+    disconnect,
+    reconnect,
+    ensureOpen,
+    client
   };
 }

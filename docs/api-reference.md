@@ -119,8 +119,14 @@ type RawEventDiagnosticInfo = {
   retry: number | undefined;
   timestamp: number; // Date.now() at dispatch time
   connectionKey: readonly string[];
+  role?: "leader" | "follower"; // set only when coordination is enabled
 };
 ```
+
+When single-tab coordination is enabled, the leader tab forwards `onRawEvent`,
+`onOpen`, and `onDisconnect` to follower tabs, so every tab can drive logging —
+not just the one holding the real connection. `role` reflects the observing
+tab: `"leader"` on the tab with the connection, `"follower"` on the others.
 
 ---
 
@@ -128,17 +134,18 @@ type RawEventDiagnosticInfo = {
 
 Returned by `createSSEClient`.
 
-| Method              | Signature                                                                                                      | Description                                                                                                                                                      |
-| ------------------- | -------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `connect`           | `() => Promise<void>`                                                                                          | Open the connection. Resolves once the HTTP response is accepted. Idempotent — safe to call when already open.                                                   |
-| `disconnect`        | `() => void`                                                                                                   | Close the connection and stop all reconnect timers.                                                                                                              |
-| `ensureOpen`        | `(options?: { timeout?: number }) => Promise<boolean>`                                                         | Wait until the connection is open. Starts connecting if needed. Resolves `true` when open, `false` on terminal failure, rejects if the optional timeout expires. |
-| `getStatus`         | `() => SSEConnectionStatus`                                                                                    | Synchronous status snapshot.                                                                                                                                     |
-| `getError`          | `() => SSEError \| null`                                                                                       | Last error, or null.                                                                                                                                             |
-| `subscribeStatus`   | `(listener: SSEStatusListener) => () => void`                                                                  | Subscribe to status changes. Returns an unsubscribe function.                                                                                                    |
-| `subscribeError`    | `(listener: SSEErrorListener) => () => void`                                                                   | Subscribe to error changes. Returns an unsubscribe function.                                                                                                     |
-| `subscribeEvent`    | `<N extends keyof Events>(eventName: N, handler: (payload: Events[N]) => void \| Promise<void>) => () => void` | Subscribe to a named event at runtime. Returns an unsubscribe function.                                                                                          |
-| `subscribeAnyEvent` | `(handler: (event: SSEEventEnvelope) => void \| Promise<void>) => () => void`                                  | Observe every event regardless of name. Receives `{ type, data }`; handler errors are swallowed. Returns an unsubscribe function.                                |
+| Method              | Signature                                                                                                      | Description                                                                                                                                                                                                                                                                                                                                       |
+| ------------------- | -------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `connect`           | `() => Promise<void>`                                                                                          | Open the connection. Resolves once the HTTP response is accepted. Idempotent — safe to call when already open.                                                                                                                                                                                                                                    |
+| `disconnect`        | `() => void`                                                                                                   | Close the connection and stop all reconnect timers.                                                                                                                                                                                                                                                                                               |
+| `reconnect`         | `() => Promise<void>`                                                                                          | Force a fresh connection even when the client reports `open`, resuming from the last seen event id. No manual-disconnect diagnostic is emitted. Use it to recover a stream that looks open but has gone silent (e.g. after the device wakes from sleep). On a coordination follower it is a no-op; on the leader it reconnects the shared stream. |
+| `ensureOpen`        | `(options?: { timeout?: number }) => Promise<boolean>`                                                         | Wait until the connection is open. Starts connecting if needed. Resolves `true` when open, `false` on terminal failure, rejects if the optional timeout expires.                                                                                                                                                                                  |
+| `getStatus`         | `() => SSEConnectionStatus`                                                                                    | Synchronous status snapshot.                                                                                                                                                                                                                                                                                                                      |
+| `getError`          | `() => SSEError \| null`                                                                                       | Last error, or null.                                                                                                                                                                                                                                                                                                                              |
+| `subscribeStatus`   | `(listener: SSEStatusListener) => () => void`                                                                  | Subscribe to status changes. Returns an unsubscribe function.                                                                                                                                                                                                                                                                                     |
+| `subscribeError`    | `(listener: SSEErrorListener) => () => void`                                                                   | Subscribe to error changes. Returns an unsubscribe function.                                                                                                                                                                                                                                                                                      |
+| `subscribeEvent`    | `<N extends keyof Events>(eventName: N, handler: (payload: Events[N]) => void \| Promise<void>) => () => void` | Subscribe to a named event at runtime. Returns an unsubscribe function.                                                                                                                                                                                                                                                                           |
+| `subscribeAnyEvent` | `(handler: (event: SSEEventEnvelope) => void \| Promise<void>) => () => void`                                  | Observe every event regardless of name. Receives `{ type, data }`; handler errors are swallowed. Returns an unsubscribe function.                                                                                                                                                                                                                 |
 
 #### `SSEConnectionStatus`
 
@@ -180,6 +187,28 @@ parser.flush(); // flush any buffered partial event
 
 ---
 
+### `attachLifecycleResume(client, options?)`
+
+Reconnect a client when the page regains focus, comes back online, or becomes
+visible again. Returns a cleanup function that removes the listeners; a no-op in
+non-browser environments.
+
+```ts
+const detach = attachLifecycleResume(client, {
+  triggers: ["focus", "online", "visible", "pageshow"], // default: all
+  strategy: "ensure", // "ensure" (default) or "reconnect"
+  throttleMs: 2000 // minimum gap between resume attempts
+});
+```
+
+| Option       | Type                                                 | Default    | Description                                                                                                           |
+| ------------ | ---------------------------------------------------- | ---------- | --------------------------------------------------------------------------------------------------------------------- |
+| `triggers`   | `("focus" \| "online" \| "visible" \| "pageshow")[]` | all        | Which browser signals trigger a resume.                                                                               |
+| `strategy`   | `"ensure" \| "reconnect"`                            | `"ensure"` | `"ensure"` only reconnects when not already open. `"reconnect"` forces a fresh stream — recovers a silent connection. |
+| `throttleMs` | `number`                                             | `2000`     | Minimum gap between resume attempts; lifecycle signals can fire in bursts.                                            |
+
+---
+
 ## React — `@flamefrontend/sse-runtime-react`
 
 ### `useSSE<Events>(options)`
@@ -187,17 +216,21 @@ parser.flush(); // flush any buffered partial event
 Creates and manages an SSE client for the lifetime of the component. Automatically calls `connect` on mount and `disconnect` on unmount.
 
 ```ts
-const { status, error, connect, disconnect } = useSSE<Events>(options);
+const { status, error, connect, disconnect, reconnect, ensureOpen, client } =
+  useSSE<Events>(options);
 ```
 
-Returns `UseSSEResult`:
+Returns `UseSSEResult<Events>`:
 
-| Field        | Type                  | Description                                                 |
-| ------------ | --------------------- | ----------------------------------------------------------- |
-| `status`     | `SSEConnectionStatus` | Current connection status                                   |
-| `error`      | `SSEError \| null`    | Last error                                                  |
-| `connect`    | `() => Promise<void>` | Manually trigger a connection (e.g. after `enabled: false`) |
-| `disconnect` | `() => void`          | Manually disconnect                                         |
+| Field        | Type                                                   | Description                                                                      |
+| ------------ | ------------------------------------------------------ | -------------------------------------------------------------------------------- |
+| `status`     | `SSEConnectionStatus`                                  | Current connection status                                                        |
+| `error`      | `SSEError \| null`                                     | Last error                                                                       |
+| `connect`    | `() => Promise<void>`                                  | Manually trigger a connection (e.g. after `enabled: false`)                      |
+| `disconnect` | `() => void`                                           | Manually disconnect                                                              |
+| `reconnect`  | `() => Promise<void>`                                  | Force a fresh connection (see `SSEClient.reconnect`)                             |
+| `ensureOpen` | `(options?: { timeout?: number }) => Promise<boolean>` | Wait until open before an action; starts connecting if needed                    |
+| `client`     | `SSEClient<Events>`                                    | The underlying client — use it with `useSSEAnyEvent` or to call methods directly |
 
 The client is recreated only when `key`, `url`, `enabled`, `credentials`, the set of event names, or `coordination` change. Dynamic values like `headers`, event handler functions, `reconnect`, and `auth` are read from a ref — they update without recreating the client.
 
@@ -236,6 +269,25 @@ useSSEEvent(client, "message", (payload) => {
 ```
 
 Unsubscribes automatically on unmount or when `connection`/`eventName` changes.
+
+---
+
+### `useSSEAnyEvent<Events>(connection, handler)`
+
+Subscribes to every event regardless of name — useful when the event
+discriminator lives inside the payload rather than the SSE `event:` field, so a
+single handler routes all events. The handler receives `{ type, data }` and is
+kept in a ref, so it can change between renders without resubscribing.
+
+```ts
+const { client } = useSSE<Events>(options);
+
+useSSEAnyEvent(client, (event) => {
+  dispatch(event); // event: { type: string; data: unknown }
+});
+```
+
+Unsubscribes automatically on unmount or when `connection` changes.
 
 ---
 

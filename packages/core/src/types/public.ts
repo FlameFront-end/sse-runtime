@@ -2,6 +2,7 @@ export type { AuthOptions } from "./auth";
 export type { SSEClientOptions } from "./client-options";
 export type { CoordinationMode, CoordinationOptions } from "./coordination";
 export type {
+  CoordinationRole,
   DiagnosticsOptions,
   DisconnectDiagnosticInfo,
   DisconnectReason,
