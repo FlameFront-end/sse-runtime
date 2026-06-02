@@ -87,6 +87,36 @@ describe("single-tab coordination", () => {
     leader.disconnect();
   });
 
+  it("exposes the coordination role via getRole and subscribeRole", async () => {
+    const harness = createCoordinationHarness();
+    const leader = createCoordinatedClient(
+      harness,
+      async () => new Response(createControlledStream().readable)
+    );
+
+    const observed: Array<"leader" | "follower" | null> = [];
+    const unsubscribe = leader.subscribeRole?.((role) => void observed.push(role));
+
+    await leader.connect();
+    await waitFor(() => leader.getRole?.() === "leader");
+
+    expect(observed).toEqual([null, "follower", "leader"]);
+
+    leader.disconnect();
+    expect(leader.getRole?.()).toBeNull();
+    unsubscribe?.();
+  });
+
+  it("does not expose a coordination role on a non-coordinated client", () => {
+    const local = createSSEClient<ChatEvents>(
+      { key: ["chat"], url: "/stream" },
+      { transport: async () => new Response(createControlledStream().readable) }
+    );
+
+    expect(local.getRole).toBeUndefined();
+    expect(local.subscribeRole).toBeUndefined();
+  });
+
   it("subscribeEvent on leader and follower both receive forwarded events", async () => {
     const harness = createCoordinationHarness();
     const leaderStream = createControlledStream();

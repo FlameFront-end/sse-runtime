@@ -1,4 +1,8 @@
-import type { SSEConnectionStatus, SSEError } from "@flamefrontend/sse-runtime-core";
+import type {
+  CoordinationRole,
+  SSEConnectionStatus,
+  SSEError
+} from "@flamefrontend/sse-runtime-core";
 import type { SSEDevtoolsClientInfo } from "@flamefrontend/sse-runtime-react";
 
 export type DevtoolsEventEntry = {
@@ -13,6 +17,7 @@ export type DevtoolsClientRecord = {
   readonly key: string;
   readonly url: string;
   readonly status: SSEConnectionStatus;
+  readonly role: CoordinationRole | null;
   readonly error: SSEError | null;
   readonly events: readonly DevtoolsEventEntry[];
   readonly recentEventTimestamps: readonly number[];

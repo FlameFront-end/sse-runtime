@@ -10,6 +10,7 @@ import {
 import { normalizeError } from "../errors/sse-error";
 import type { ParsedSSEEvent } from "../parser/parse-sse-chunk";
 import type {
+  CoordinationRole,
   DisconnectDiagnosticInfo,
   EventHandler,
   EventMap,
@@ -55,6 +56,22 @@ export function createCoordinatedSSEClient<Events extends EventMap>(
   let followerGeneration = 0;
   let lastEventId: string | undefined;
   let lastEventAt: number | undefined;
+  let role: CoordinationRole | null = null;
+  const roleListeners = new Set<(role: CoordinationRole | null) => void>();
+
+  function setRole(next: CoordinationRole | null): void {
+    if (role === next) {
+      return;
+    }
+    role = next;
+    for (const listener of roleListeners) {
+      try {
+        listener(role);
+      } catch {
+        // role listener errors must not affect coordination
+      }
+    }
+  }
 
   return {
     connect,
@@ -94,6 +111,14 @@ export function createCoordinatedSSEClient<Events extends EventMap>(
     getError: state.getError,
     getStatus: state.getStatus,
     getLastEventAt: () => lastEventAt,
+    getRole: () => role,
+    subscribeRole(listener: (role: CoordinationRole | null) => void): () => void {
+      roleListeners.add(listener);
+      listener(role);
+      return () => {
+        roleListeners.delete(listener);
+      };
+    },
     subscribeError: state.subscribeError,
     subscribeStatus: state.subscribeStatus
   };
@@ -114,6 +139,7 @@ export function createCoordinatedSSEClient<Events extends EventMap>(
 
     const controller = new AbortController();
     leadershipController = controller;
+    setRole("follower");
     callDiagnostic(options.diagnostics?.onCoordinationRoleChange, { role: "follower" });
 
     void backend
@@ -143,6 +169,7 @@ export function createCoordinatedSSEClient<Events extends EventMap>(
   function disconnect(): void {
     isActive = false;
     followerGeneration += 1;
+    setRole(null);
     teardownEngine();
     leadershipController?.abort();
     leadershipController = null;
@@ -184,6 +211,7 @@ export function createCoordinatedSSEClient<Events extends EventMap>(
   }
 
   function becomeLeader(): void {
+    setRole("leader");
     callDiagnostic(options.diagnostics?.onCoordinationRoleChange, { role: "leader" });
     const leaderEngine = createLocalSSEClient(
       { ...options, diagnostics: buildLeaderDiagnostics() },

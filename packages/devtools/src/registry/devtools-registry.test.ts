@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MAX_EVENTS } from "../constants";
 import { createDevtoolsRegistry } from "./devtools-registry";
 import type {
+  CoordinationRole,
   SSEAnyEventHandler,
   SSEConnectionStatus,
   SSEError
@@ -11,18 +12,27 @@ import type {
 
 type StatusListener = (s: SSEConnectionStatus) => void;
 type ErrorListener = (e: SSEError | null) => void;
+type RoleListener = (role: CoordinationRole | null) => void;
 
 function createMockClient(initialStatus: SSEConnectionStatus = "closed") {
   let status: SSEConnectionStatus = initialStatus;
   let error: SSEError | null = null;
+  let role: CoordinationRole | null = null;
   const statusListeners = new Set<StatusListener>();
   const errorListeners = new Set<ErrorListener>();
+  const roleListeners = new Set<RoleListener>();
   const anyEventHandlers = new Set<SSEAnyEventHandler>();
 
   return {
     getStatus: () => status,
     getError: () => error,
     getLastEventAt: () => undefined,
+    getRole: () => role,
+    subscribeRole: vi.fn((listener: RoleListener) => {
+      roleListeners.add(listener);
+      listener(role);
+      return () => roleListeners.delete(listener);
+    }),
     connect: vi.fn(async () => undefined),
     disconnect: vi.fn(),
     reconnect: vi.fn(async () => undefined),
@@ -51,6 +61,11 @@ function createMockClient(initialStatus: SSEConnectionStatus = "closed") {
     _setError(next: SSEError | null) {
       error = next;
       for (const l of errorListeners) l(error);
+    },
+    _setRole(next: CoordinationRole | null) {
+      if (role === next) return;
+      role = next;
+      for (const l of roleListeners) l(role);
     },
     _emitEvent(type: string, data: unknown) {
       const raw = typeof data === "string" ? data : JSON.stringify(data);
@@ -89,6 +104,25 @@ describe("createDevtoolsRegistry", () => {
     expect(record.url).toBe("/events");
     expect(record.status).toBe("open");
     expect(record.key).toBe("key-1");
+  });
+
+  it("captures the coordination role and tracks role changes", () => {
+    const registry = createDevtoolsRegistry();
+    const client = createMockClient("open");
+
+    registry.register({ id: "key-1", url: "/events", client });
+    vi.runAllTimers();
+
+    const roleOf = () => [...registry.getSnapshot().values()][0].role;
+    expect(roleOf()).toBeNull();
+
+    client._setRole("follower");
+    vi.runAllTimers();
+    expect(roleOf()).toBe("follower");
+
+    client._setRole("leader");
+    vi.runAllTimers();
+    expect(roleOf()).toBe("leader");
   });
 
   it("generates unique instance ids so two clients with the same key coexist", async () => {

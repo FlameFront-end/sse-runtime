@@ -98,6 +98,7 @@ export function createDevtoolsRegistry(options: { maxEvents?: number } = {}): De
         key,
         url,
         status: initialStatus,
+        role: client.getRole?.() ?? null,
         error: client.getError(),
         events: [],
         recentEventTimestamps: [],
@@ -131,6 +132,10 @@ export function createDevtoolsRegistry(options: { maxEvents?: number } = {}): De
         patch(id, { error });
       });
 
+      const unsubRole = client.subscribeRole?.((role) => {
+        patch(id, { role });
+      });
+
       const unsubEvents = client.subscribeAnyEvent((event) => {
         const current = clients.get(id);
         if (!current) return;
@@ -155,6 +160,7 @@ export function createDevtoolsRegistry(options: { maxEvents?: number } = {}): De
       return () => {
         unsubStatus();
         unsubError();
+        unsubRole?.();
         unsubEvents();
         clients.delete(id);
         invalidate();

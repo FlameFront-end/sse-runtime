@@ -63,6 +63,7 @@ the raw string payload.
 - `subscribeError(listener): () => void`
 - `subscribeEvent(eventName, handler): () => void`
 - `subscribeAnyEvent(handler): () => void` — observe every event as `{ type, data, raw }` (`raw` is the unparsed `data` string)
+- `getRole(): CoordinationRole | null` / `subscribeRole(listener): () => void` — coordinated clients only; observe whether this tab is the `"leader"` or a `"follower"`
 
 ## Core Options
 

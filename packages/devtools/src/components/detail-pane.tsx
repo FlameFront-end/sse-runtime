@@ -5,6 +5,7 @@ import { fmtAgo, fmtData, fmtDuration, fmtTime } from "../lib/format";
 import { RATE_WINDOW_MS } from "../constants";
 import { Btn } from "./btn";
 import { EventRow } from "./event-row";
+import { RoleBadge } from "./role-badge";
 import { StatusDot } from "./status-dot";
 
 type DetailPaneProps = {
@@ -116,6 +117,7 @@ export const DetailPane = memo(function DetailPane({
             <span style={{ color: statusColor(record.status), fontSize: 11, fontWeight: 500 }}>
               {statusLabel(record.status)}
             </span>
+            <RoleBadge role={record.role} />
             {record.connectedAt && (
               <span style={{ color: C.textDim, fontSize: 11 }}>
                 connected {fmtTime(record.connectedAt)}
@@ -328,6 +330,7 @@ function exportEvents(record: DevtoolsClientRecord): void {
     url: record.url,
     key: record.key,
     status: record.status,
+    role: record.role,
     totalEvents: record.totalEvents,
     eventsInLog: record.events.length,
     truncated: record.totalEvents > record.events.length,

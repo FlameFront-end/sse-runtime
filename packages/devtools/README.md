@@ -60,6 +60,7 @@ Set `toggleShortcut=""` to disable the shortcut entirely.
 ## Panel features
 
 - **Connection list** — all active SSE connections with a live status indicator (animated dot while connecting/reconnecting); same-path connections stay distinguishable by query string
+- **Leader / Follower badge** — with single-tab coordination, marks which tab owns the real connection (leader) and which mirror it (follower); shown in the list and the detail header, and included in the exported log
 - **Detail pane** — URL, status, connected-at timestamp, connection key, error box
 - **Metrics** — events received, events/sec (measured over a 5s window independent of the log cap), uptime, reconnect count, time since last event, events in log
 - **Event log** — last `maxEvents` events per connection with timestamp, event-type badge, and expandable payload

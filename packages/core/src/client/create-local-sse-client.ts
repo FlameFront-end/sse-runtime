@@ -18,6 +18,7 @@ import { readSSEStream } from "../transport/read-sse-stream";
 import { waitForDelay } from "../timing/wait-for-delay";
 import { combineSignals } from "../utils/combine-signals";
 import type {
+  CoordinationRole,
   EventHandler,
   EventMap,
   SSEAnyEventHandler,
@@ -37,6 +38,8 @@ export type SSEClient<Events extends EventMap = EventMap> = {
   readonly getError: () => SSEError | null;
   readonly getStatus: () => SSEConnectionStatus;
   readonly getLastEventAt: () => number | undefined;
+  readonly getRole?: () => CoordinationRole | null;
+  readonly subscribeRole?: (listener: (role: CoordinationRole | null) => void) => () => void;
   readonly subscribeError: (listener: SSEErrorListener) => () => void;
   readonly subscribeStatus: (listener: SSEStatusListener) => () => void;
   readonly subscribeEvent: <EventName extends keyof Events>(

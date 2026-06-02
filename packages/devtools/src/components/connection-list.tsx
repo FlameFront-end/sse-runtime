@@ -4,6 +4,7 @@ import type { DevtoolsClientRecord } from "../registry/types";
 import { C, S, statusColor, statusLabel } from "../theme/tokens";
 import { urlLabel } from "../lib/format";
 import type { ThemePreference } from "../lib/persistence";
+import { RoleBadge } from "./role-badge";
 import { StatusDot } from "./status-dot";
 
 type ConnectionListProps = {
@@ -187,6 +188,7 @@ const ConnectionItem = memo(function ConnectionItem({
         >
           {urlLabel(record.url)}
         </span>
+        <RoleBadge role={record.role} />
       </div>
       <div style={{ display: "flex", justifyContent: "space-between", paddingLeft: 14 }}>
         <span style={{ color: statusColor(record.status), fontSize: 10 }}>
