@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
 
-import { render, waitFor } from "@testing-library/react";
+import { act, render, waitFor } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useSSE } from "./use-sse";
 import type {
+  CoordinationRole,
   EventMap,
   SSEClientOptions,
   SSEConnectionStatus,
@@ -49,6 +50,27 @@ describe("useSSE", () => {
     await waitFor(() => expect(createSSEClient).toHaveBeenCalledTimes(1));
 
     expect(client.disconnect).not.toHaveBeenCalled();
+  });
+
+  it("exposes the coordination role and tracks role changes", async () => {
+    const client = createFakeClient();
+    createSSEClient.mockReturnValue(client);
+    let latestRole: CoordinationRole | null | undefined;
+
+    function TestComponent(): ReactElement {
+      const { role } = useSSE({ key: ["chat"], url: "/stream" });
+      latestRole = role;
+      return <span>{role ?? "none"}</span>;
+    }
+
+    render(<TestComponent />);
+    await waitFor(() => expect(latestRole).toBeNull());
+
+    act(() => client.emitRole("follower"));
+    await waitFor(() => expect(latestRole).toBe("follower"));
+
+    act(() => client.emitRole("leader"));
+    await waitFor(() => expect(latestRole).toBe("leader"));
   });
 
   it("uses latest dynamic options without recreating the client", async () => {
@@ -212,12 +234,17 @@ function createFakeClient(): {
   readonly subscribeError: (listener: SSEErrorListener) => () => void;
   readonly subscribeStatus: (listener: SSEStatusListener) => () => void;
   readonly subscribeAnyEvent: ReturnType<typeof vi.fn>;
+  readonly getRole: () => CoordinationRole | null;
+  readonly subscribeRole: (listener: (role: CoordinationRole | null) => void) => () => void;
   readonly emit: (status: SSEConnectionStatus) => void;
+  readonly emitRole: (role: CoordinationRole | null) => void;
 } {
   let status: SSEConnectionStatus = "closed";
+  let role: CoordinationRole | null = null;
   const error = null;
   const errorListeners = new Set<SSEErrorListener>();
   const listeners = new Set<SSEStatusListener>();
+  const roleListeners = new Set<(role: CoordinationRole | null) => void>();
 
   return {
     connect: vi.fn(async () => undefined),
@@ -227,6 +254,13 @@ function createFakeClient(): {
     subscribeAnyEvent: vi.fn(() => () => undefined),
     getError: () => error,
     getStatus: () => status,
+    getRole: () => role,
+    subscribeRole(listener: (role: CoordinationRole | null) => void): () => void {
+      roleListeners.add(listener);
+      return () => {
+        roleListeners.delete(listener);
+      };
+    },
     subscribeError(listener: SSEErrorListener): () => void {
       errorListeners.add(listener);
       listener(error);
@@ -246,6 +280,10 @@ function createFakeClient(): {
     emit(nextStatus: SSEConnectionStatus): void {
       status = nextStatus;
       listeners.forEach((listener) => listener(nextStatus));
+    },
+    emitRole(nextRole: CoordinationRole | null): void {
+      role = nextRole;
+      roleListeners.forEach((listener) => listener(nextRole));
     }
   };
 }

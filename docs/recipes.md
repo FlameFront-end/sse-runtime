@@ -185,6 +185,29 @@ createSSEClient({
 
 `onUnauthorized` is called once per session. If `retryAfterRefresh` is `true`, the client reconnects after the callback resolves. If the reconnected request returns 401 again, the client moves to `"error"` state.
 
+For the common Bearer case this collapses to `createBearerAuth`, which resolves the token before every attempt and again on `401`:
+
+```ts
+createSSEClient({ key: ["chat"], url: "/stream", ...createBearerAuth(getAccessToken) });
+```
+
+### Reconnect notifications (toast on drop / recovery)
+
+`attachReconnectNotifications` reports only real drops and recoveries — never the initial connect or a manual `disconnect()`:
+
+```ts
+const client = createSSEClient({ key: ["chat"], url: "/stream" });
+await client.connect();
+
+const detach = attachReconnectNotifications(client, {
+  onReconnecting: () => showToast("Reconnecting…"),
+  onReconnected: () => dismissToast(),
+  onFailed: () => showToast("Connection lost")
+});
+
+// later: detach();
+```
+
 ### Heartbeat timeout
 
 ```ts

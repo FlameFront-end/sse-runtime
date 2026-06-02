@@ -242,6 +242,48 @@ they resume only when the connection is not open or looks stale.
 
 ---
 
+### `createBearerAuth(getToken, options?)`
+
+Builds `headers` and `auth` options for token authentication, ready to spread into `createSSEClient` / `useSSE`. `getToken` is resolved before every connection attempt and again on `401`, so a provider that refreshes on demand keeps the stream authenticated across reconnects.
+
+```ts
+createSSEClient({
+  key: ["chat"],
+  url: "/stream",
+  ...createBearerAuth(getAccessToken, { headers: { "X-Trace": traceId } })
+});
+```
+
+| Option           | Type                          | Default       | Description                                                           |
+| ---------------- | ----------------------------- | ------------- | --------------------------------------------------------------------- |
+| `headers`        | `Record<string, string>`      | —             | Extra headers merged into every request alongside `Authorization`.    |
+| `scheme`         | `string`                      | `"Bearer"`    | Authorization scheme.                                                 |
+| `onUnauthorized` | `() => void \| Promise<void>` | re-`getToken` | Called on `401` before the retry; defaults to re-invoking `getToken`. |
+
+`getToken` returns `string | null | undefined` (or a promise of one). When it yields no token, `Authorization` is omitted. `auth.retryAfterRefresh` is always `true`.
+
+---
+
+### `attachReconnectNotifications(client, handlers)`
+
+Turns raw status transitions into reconnect-lifecycle callbacks — useful for surfacing a toast while a dropped stream recovers. Fires only for real drops and recoveries, never the initial connect or a manual `disconnect()`. Returns a cleanup function.
+
+```ts
+const detach = attachReconnectNotifications(client, {
+  onReconnecting: () => showToast("Reconnecting…"),
+  onReconnected: () => dismissToast(),
+  onFailed: () => showToast("Connection lost")
+});
+```
+
+| Handler          | Fires when                                               |
+| ---------------- | -------------------------------------------------------- |
+| `onReconnecting` | A live connection drops and the client starts retrying.  |
+| `onReconnected`  | A reconnect succeeds and the stream is open again.       |
+| `onFailed`       | Retries are exhausted and the client gives up (`error`). |
+
+---
+
 ## React — `@flamefrontend/sse-runtime-react`
 
 ### `useSSE<Events>(options)`
@@ -249,7 +291,7 @@ they resume only when the connection is not open or looks stale.
 Creates and manages an SSE client for the lifetime of the component. Automatically calls `connect` on mount and `disconnect` on unmount.
 
 ```ts
-const { status, error, connect, disconnect, reconnect, ensureOpen, client } =
+const { status, error, role, connect, disconnect, reconnect, ensureOpen, client } =
   useSSE<Events>(options);
 ```
 
@@ -259,6 +301,7 @@ Returns `UseSSEResult<Events>`:
 | ------------ | ------------------------------------------------------ | -------------------------------------------------------------------------------- |
 | `status`     | `SSEConnectionStatus`                                  | Current connection status                                                        |
 | `error`      | `SSEError \| null`                                     | Last error                                                                       |
+| `role`       | `CoordinationRole \| null`                             | `"leader"` / `"follower"` under single-tab coordination, else `null`             |
 | `connect`    | `() => Promise<void>`                                  | Manually trigger a connection (e.g. after `enabled: false`)                      |
 | `disconnect` | `() => void`                                           | Manually disconnect                                                              |
 | `reconnect`  | `() => Promise<void>`                                  | Force a fresh connection (see `SSEClient.reconnect`)                             |
