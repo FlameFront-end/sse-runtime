@@ -58,10 +58,11 @@ the raw string payload.
 - `ensureOpen(options?: { timeout?: number }): Promise<boolean>` — wait until the stream is open; starts connecting if needed
 - `getStatus(): SSEConnectionStatus`
 - `getError(): SSEError | null`
+- `getLastEventAt(): number | undefined` — timestamp of the most recent event; a staleness signal for custom watchdogs
 - `subscribeStatus(listener): () => void`
 - `subscribeError(listener): () => void`
 - `subscribeEvent(eventName, handler): () => void`
-- `subscribeAnyEvent(handler): () => void`
+- `subscribeAnyEvent(handler): () => void` — observe every event as `{ type, data, raw }` (`raw` is the unparsed `data` string)
 
 ## Core Options
 
@@ -96,6 +97,11 @@ import { attachLifecycleResume } from "@flamefrontend/sse-runtime-core";
 
 const detach = attachLifecycleResume(client, { strategy: "reconnect" });
 ```
+
+Set `staleTimeoutMs` and/or `wakeDriftMs` to also run a background watchdog that
+recovers a stream the browser never reported as broken — one that went silent or
+whose socket died while the device slept. `minHiddenMs` suppresses the visible
+trigger after a brief tab switch. See the API reference for all options.
 
 ## Auth Refresh
 

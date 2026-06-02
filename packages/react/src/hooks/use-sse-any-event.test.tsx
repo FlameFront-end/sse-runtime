@@ -47,9 +47,9 @@ describe("useSSEAnyEvent", () => {
 
     expect(client.subscribeAnyEvent).toHaveBeenCalledTimes(1);
 
-    act(() => client.emitAnyEvent({ type: "message", data: { text: "hi" } }));
+    act(() => client.emitAnyEvent({ type: "message", data: { text: "hi" }, raw: '{"text":"hi"}' }));
 
-    expect(received).toEqual([{ type: "message", data: { text: "hi" } }]);
+    expect(received).toEqual([{ type: "message", data: { text: "hi" }, raw: '{"text":"hi"}' }]);
   });
 
   it("always calls the latest handler without resubscribing", () => {
@@ -78,10 +78,14 @@ describe("useSSEAnyEvent", () => {
 
     expect(client.subscribeAnyEvent).toHaveBeenCalledTimes(1);
 
-    act(() => client.emitAnyEvent({ type: "message", data: { text: "hi" } }));
+    act(() => client.emitAnyEvent({ type: "message", data: { text: "hi" }, raw: '{"text":"hi"}' }));
 
     expect(firstHandler).not.toHaveBeenCalled();
-    expect(secondHandler).toHaveBeenCalledWith({ type: "message", data: { text: "hi" } });
+    expect(secondHandler).toHaveBeenCalledWith({
+      type: "message",
+      data: { text: "hi" },
+      raw: '{"text":"hi"}'
+    });
   });
 
   it("unsubscribes on unmount", () => {

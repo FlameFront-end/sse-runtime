@@ -271,6 +271,43 @@ createSSEClient({
 
 `reconnect.maxRetries` is always a hard cap. `shouldRetry` is an additional per-error filter applied within that cap — not a way to exceed it.
 
+Errors without an HTTP `status` are network/transport failures (`error.kind === "transport"`). Their original browser error is preserved on `error.cause`, and `error.message` carries the text — classify them by inspecting either:
+
+```ts
+retry: {
+  shouldRetry: (error) => {
+    const text = error.message.toLowerCase();
+    if (text.includes("cors")) return false; // misconfiguration — retrying won't help
+    return true; // network blips, protocol errors, etc. are transient
+  },
+  getDelay: (ctx) => {
+    if (ctx.error.message.toLowerCase().includes("http2")) return 10_000; // back off harder on protocol errors
+    return ctx.serverRetry ?? 5_000;
+  }
+}
+```
+
+### Lifecycle resume & stale-stream watchdog
+
+A connection can break without surfacing an error: the stream goes silent, or the OS kills the socket while the device sleeps. `attachLifecycleResume` recovers from both — browser lifecycle signals plus an optional background watchdog:
+
+```ts
+import { attachLifecycleResume } from "@flamefrontend/sse-runtime-core";
+
+const client = createSSEClient({ key: ["chat"], url: "/stream" });
+await client.connect();
+
+const detach = attachLifecycleResume(client, {
+  staleTimeoutMs: 120_000, // no event for 2 min while "open" → reconnect
+  wakeDriftMs: 60_000, // watchdog tick this late → device woke, force reconnect
+  minHiddenMs: 15_000 // ignore the visible trigger after a quick tab switch
+});
+
+// later: detach();
+```
+
+Staleness is measured against `client.getLastEventAt()` by default. If you aggregate events elsewhere (e.g. across several clients), point `getLastActivityAt` at your own source. The watchdog only runs when `staleTimeoutMs` or `wakeDriftMs` is set; with neither, the helper just reacts to lifecycle events as before.
+
 ### Diagnostics / observability
 
 ```ts
@@ -324,3 +361,11 @@ unsubscribe();
 ```
 
 Multiple subscribers for the same event are all called in registration order. Errors in one subscriber do not prevent others from running.
+
+To observe every event regardless of name — for logging, devtools, or dispatching on a `type` field inside the payload — use `subscribeAnyEvent`. Each envelope carries the parsed `data` plus the original `raw` string:
+
+```ts
+client.subscribeAnyEvent(({ type, data, raw }) => {
+  log.push({ type, data, raw }); // `raw` is the unparsed `data` line, ideal for logs
+});
+```

@@ -2,13 +2,10 @@ export type EventMap = Record<string, unknown>;
 
 export type EventHandler<Payload> = (payload: Payload) => void | Promise<void>;
 
-/**
- * A parsed event delivered to a wildcard observer: the event name plus its
- * parsed payload (JSON when parseable, otherwise the raw string).
- */
 export type SSEEventEnvelope = {
   readonly type: string;
   readonly data: unknown;
+  readonly raw: string;
 };
 
 /**

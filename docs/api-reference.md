@@ -142,10 +142,11 @@ Returned by `createSSEClient`.
 | `ensureOpen`        | `(options?: { timeout?: number }) => Promise<boolean>`                                                         | Wait until the connection is open. Starts connecting if needed. Resolves `true` when open, `false` on terminal failure, rejects if the optional timeout expires.                                                                                                                                                                                  |
 | `getStatus`         | `() => SSEConnectionStatus`                                                                                    | Synchronous status snapshot.                                                                                                                                                                                                                                                                                                                      |
 | `getError`          | `() => SSEError \| null`                                                                                       | Last error, or null.                                                                                                                                                                                                                                                                                                                              |
+| `getLastEventAt`    | `() => number \| undefined`                                                                                    | Timestamp (`Date.now()`) of the most recently received event, or `undefined` if none yet. Useful as a staleness signal for custom watchdogs and for `attachLifecycleResume`'s `getLastActivityAt`.                                                                                                                                                |
 | `subscribeStatus`   | `(listener: SSEStatusListener) => () => void`                                                                  | Subscribe to status changes. Returns an unsubscribe function.                                                                                                                                                                                                                                                                                     |
 | `subscribeError`    | `(listener: SSEErrorListener) => () => void`                                                                   | Subscribe to error changes. Returns an unsubscribe function.                                                                                                                                                                                                                                                                                      |
 | `subscribeEvent`    | `<N extends keyof Events>(eventName: N, handler: (payload: Events[N]) => void \| Promise<void>) => () => void` | Subscribe to a named event at runtime. Returns an unsubscribe function.                                                                                                                                                                                                                                                                           |
-| `subscribeAnyEvent` | `(handler: (event: SSEEventEnvelope) => void \| Promise<void>) => () => void`                                  | Observe every event regardless of name. Receives `{ type, data }`; handler errors are swallowed. Returns an unsubscribe function.                                                                                                                                                                                                                 |
+| `subscribeAnyEvent` | `(handler: (event: SSEEventEnvelope) => void \| Promise<void>) => () => void`                                  | Observe every event regardless of name. Receives `{ type, data, raw }` where `raw` is the original unparsed `data` string; handler errors are swallowed. Returns an unsubscribe function.                                                                                                                                                         |
 
 #### `SSEConnectionStatus`
 
@@ -173,6 +174,18 @@ type SSEError = {
 };
 ```
 
+#### `SSEEventEnvelope`
+
+Delivered to `subscribeAnyEvent` / `useSSEAnyEvent` observers.
+
+```ts
+type SSEEventEnvelope = {
+  type: string; // event name (the SSE `event:` field, "message" when omitted)
+  data: unknown; // parsed payload — JSON when parseable, otherwise the raw string
+  raw: string; // the original unparsed `data` string, for logging or custom decoding
+};
+```
+
 ---
 
 ### `createSSEParser()` / `parseSSEChunk(chunk)`
@@ -193,19 +206,37 @@ Reconnect a client when the page regains focus, comes back online, or becomes
 visible again. Returns a cleanup function that removes the listeners; a no-op in
 non-browser environments.
 
+With `staleTimeoutMs` and/or `wakeDriftMs` set, it also runs a background
+watchdog that recovers a connection the browser never told you was broken — a
+stream that silently stopped delivering events, or a socket killed while the
+device slept. The watchdog ticks at most every 30 s (sooner if your thresholds
+are smaller).
+
 ```ts
 const detach = attachLifecycleResume(client, {
   triggers: ["focus", "online", "visible", "pageshow"], // default: all
   strategy: "ensure", // "ensure" (default) or "reconnect"
-  throttleMs: 2000 // minimum gap between resume attempts
+  throttleMs: 2000, // minimum gap between resume attempts
+  staleTimeoutMs: 120000, // treat an open stream with no events for 2 min as dead
+  wakeDriftMs: 60000, // force a resume when a watchdog tick fires this late (device woke)
+  minHiddenMs: 15000 // ignore the visible trigger after only a brief tab switch
 });
 ```
 
-| Option       | Type                                                 | Default    | Description                                                                                                           |
-| ------------ | ---------------------------------------------------- | ---------- | --------------------------------------------------------------------------------------------------------------------- |
-| `triggers`   | `("focus" \| "online" \| "visible" \| "pageshow")[]` | all        | Which browser signals trigger a resume.                                                                               |
-| `strategy`   | `"ensure" \| "reconnect"`                            | `"ensure"` | `"ensure"` only reconnects when not already open. `"reconnect"` forces a fresh stream — recovers a silent connection. |
-| `throttleMs` | `number`                                             | `2000`     | Minimum gap between resume attempts; lifecycle signals can fire in bursts.                                            |
+| Option              | Type                                                 | Default                 | Description                                                                                                                                                                                  |
+| ------------------- | ---------------------------------------------------- | ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `triggers`          | `("focus" \| "online" \| "visible" \| "pageshow")[]` | all                     | Which browser signals trigger a resume.                                                                                                                                                      |
+| `strategy`          | `"ensure" \| "reconnect"`                            | `"ensure"`              | `"ensure"` only reconnects when not already open. `"reconnect"` forces a fresh stream — recovers a silent connection.                                                                        |
+| `throttleMs`        | `number`                                             | `2000`                  | Minimum gap between resume attempts; lifecycle signals can fire in bursts.                                                                                                                   |
+| `staleTimeoutMs`    | `number`                                             | —                       | When set, an open stream with no event for this long counts as stale: a watchdog reconnects it, and unforced triggers (`focus`, `pageshow`) only resume when the connection looks unhealthy. |
+| `wakeDriftMs`       | `number`                                             | —                       | When set, force a resume if a watchdog tick fires this much later than scheduled — a strong signal the device woke from sleep with a dead socket.                                            |
+| `minHiddenMs`       | `number`                                             | —                       | Skip the `visible` resume when the tab was hidden for less than this, avoiding needless reconnects on quick tab switches.                                                                    |
+| `getLastActivityAt` | `() => number \| undefined`                          | `client.getLastEventAt` | Source for the last-event timestamp used by staleness checks.                                                                                                                                |
+
+Wake signals (`online`, and `visible` once the `minHiddenMs` gate passes) always
+force a resume, since the OS event itself implies the socket may be dead. `focus`
+and `pageshow` are unforced: without `staleTimeoutMs` they always resume, with it
+they resume only when the connection is not open or looks stale.
 
 ---
 

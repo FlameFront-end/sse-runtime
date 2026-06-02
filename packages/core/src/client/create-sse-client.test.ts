@@ -516,8 +516,8 @@ describe("createSSEClient", () => {
     await waitFor(() => received.length === 2);
 
     expect(received).toEqual([
-      { type: "message", data: { text: "hello" } },
-      { type: "ping", data: 42 }
+      { type: "message", data: { text: "hello" }, raw: '{"text":"hello"}' },
+      { type: "ping", data: 42, raw: "42" }
     ]);
     client.disconnect();
   });
@@ -536,7 +536,7 @@ describe("createSSEClient", () => {
     stream.enqueue("event: custom\ndata: hi\n\n");
     await waitFor(() => handler.mock.calls.length === 1);
 
-    expect(handler).toHaveBeenCalledWith({ type: "custom", data: "hi" });
+    expect(handler).toHaveBeenCalledWith({ type: "custom", data: "hi", raw: "hi" });
 
     unsubscribe();
     stream.enqueue("event: custom\ndata: bye\n\n");
