@@ -1,5 +1,20 @@
 # @flamefrontend/sse-runtime-core
 
+## 0.5.0
+
+### Minor Changes
+
+- 0cbeac0: Add `client.reconnect()` to force a fresh connection even when the client looks
+  `open`, resuming from the last seen event id without emitting a manual-disconnect
+  diagnostic. Add `attachLifecycleResume(client, options)`, a browser helper that
+  reconnects on `focus`, `online`, `pageshow`, and visibility changes (with
+  throttling and an `ensure` vs `reconnect` strategy).
+- 0cbeac0: Forward `onRawEvent`, `onOpen`, and `onDisconnect` diagnostics from the
+  coordination leader to follower tabs, so every tab can drive logging and
+  lifecycle UI — not just the one holding the real connection. `RawEventDiagnosticInfo`
+  now carries an optional `role` (`"leader"` | `"follower"`) when coordination is
+  enabled. Also fixes `onParseError` not firing in coordinated clients.
+
 ## 0.4.1
 
 ### Patch Changes
