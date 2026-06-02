@@ -1,6 +1,6 @@
 {
   "name": "@flamefrontend/sse-runtime-core",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Framework-agnostic runtime for the Server-Sent Events lifecycle: typed events, reconnect with backoff, Last-Event-ID resumption, auth refresh, and connection status.",
   "keywords": [
     "sse",
