@@ -22,6 +22,7 @@ function createMockClient(initialStatus: SSEConnectionStatus = "closed") {
   return {
     getStatus: () => status,
     getError: () => error,
+    getLastEventAt: () => undefined,
     connect: vi.fn(async () => undefined),
     disconnect: vi.fn(),
     reconnect: vi.fn(async () => undefined),
@@ -52,7 +53,8 @@ function createMockClient(initialStatus: SSEConnectionStatus = "closed") {
       for (const l of errorListeners) l(error);
     },
     _emitEvent(type: string, data: unknown) {
-      for (const h of anyEventHandlers) void h({ type, data });
+      const raw = typeof data === "string" ? data : JSON.stringify(data);
+      for (const h of anyEventHandlers) void h({ type, data, raw });
     }
   };
 }

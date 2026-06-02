@@ -36,6 +36,7 @@ export type SSEClient<Events extends EventMap = EventMap> = {
   readonly ensureOpen: (options?: { readonly timeout?: number }) => Promise<boolean>;
   readonly getError: () => SSEError | null;
   readonly getStatus: () => SSEConnectionStatus;
+  readonly getLastEventAt: () => number | undefined;
   readonly subscribeError: (listener: SSEErrorListener) => () => void;
   readonly subscribeStatus: (listener: SSEStatusListener) => () => void;
   readonly subscribeEvent: <EventName extends keyof Events>(
@@ -82,6 +83,7 @@ export function createLocalSSEClient<Events extends EventMap>(
   let authRefreshAttempt = 0;
   let generation = 0;
   let lastEventId: string | undefined = dependencies.initialLastEventId;
+  let lastEventAt: number | undefined;
   let serverRetryDelay: number | undefined;
 
   const theClient: SSEClient<Events> = {
@@ -177,6 +179,7 @@ export function createLocalSSEClient<Events extends EventMap>(
 
     getError: state.getError,
     getStatus: state.getStatus,
+    getLastEventAt: () => lastEventAt,
     subscribeError: state.subscribeError,
     subscribeStatus: state.subscribeStatus
   };
@@ -304,6 +307,8 @@ export function createLocalSSEClient<Events extends EventMap>(
 
   async function dispatchEvents(events: readonly ParsedSSEEvent[]): Promise<void> {
     for (const event of events) {
+      lastEventAt = Date.now();
+
       if (event.id !== undefined) {
         lastEventId = event.id;
       }
@@ -345,7 +350,7 @@ export function createLocalSSEClient<Events extends EventMap>(
 
     for (const handler of anyEventHandlers) {
       try {
-        await handler({ type: event.event, data: lenientPayload });
+        await handler({ type: event.event, data: lenientPayload, raw: event.data });
       } catch {
         // ignored
       }

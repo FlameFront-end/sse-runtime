@@ -54,6 +54,7 @@ export function createCoordinatedSSEClient<Events extends EventMap>(
   let followerChain: Promise<void> = Promise.resolve();
   let followerGeneration = 0;
   let lastEventId: string | undefined;
+  let lastEventAt: number | undefined;
 
   return {
     connect,
@@ -92,6 +93,7 @@ export function createCoordinatedSSEClient<Events extends EventMap>(
 
     getError: state.getError,
     getStatus: state.getStatus,
+    getLastEventAt: () => lastEventAt,
     subscribeError: state.subscribeError,
     subscribeStatus: state.subscribeStatus
   };
@@ -323,6 +325,8 @@ export function createCoordinatedSSEClient<Events extends EventMap>(
   }
 
   async function callSubscribers(event: ParsedSSEEvent): Promise<void> {
+    lastEventAt = Date.now();
+
     const handlers = subscriberRegistry.get(event.event);
     const hasNamed = handlers !== undefined && handlers.size > 0;
     if (!hasNamed && anyEventHandlers.size === 0) return;
@@ -331,7 +335,7 @@ export function createCoordinatedSSEClient<Events extends EventMap>(
 
     for (const handler of anyEventHandlers) {
       try {
-        await handler({ type: event.event, data: lenientPayload });
+        await handler({ type: event.event, data: lenientPayload, raw: event.data });
       } catch {
         // ignored
       }
