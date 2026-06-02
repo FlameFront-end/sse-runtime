@@ -1,5 +1,17 @@
 # @flamefrontend/sse-runtime-react
 
+## 0.6.0
+
+### Minor Changes
+
+- d259be9: `useSSE` now returns `role` — `"leader"`, `"follower"`, or `null` — reflecting the single-tab coordination role of the connection. Removes the need to wire up the `onCoordinationRoleChange` diagnostic just to know whether this tab owns the stream.
+  </content>
+
+### Patch Changes
+
+- Updated dependencies [d259be9]
+  - @flamefrontend/sse-runtime-core@0.8.0
+
 ## 0.5.2
 
 ### Patch Changes
