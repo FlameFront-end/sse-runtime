@@ -1,5 +1,11 @@
 # @flamefrontend/sse-runtime-react-native-devtools
 
+## 1.0.5
+
+### Patch Changes
+
+- Make React Native DevTools panel resizing and swipe-down closing smoother by driving drag height with Animated values instead of React render state.
+
 ## 1.0.4
 
 ### Patch Changes
