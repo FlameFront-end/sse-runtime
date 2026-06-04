@@ -56,17 +56,42 @@ jobs:
           export GIT_ASKPASS="$askpass"
           export GIT_TERMINAL_PROMPT=0
 
-          echo "Checking GitLab token identity"
-          curl --fail-with-body --silent --show-error \
-            --header "PRIVATE-TOKEN: ${GITLAB_TOKEN}" \
-            "https://gitlab.devair.ru/api/v4/user" |
-            python -c 'import json, sys; user = json.load(sys.stdin); print("GitLab user: @{} ({})".format(user.get("username"), user.get("name")))'
+          check_gitlab_api() {
+            local label="$1"
+            local url="$2"
+            local parser="$3"
+            local response_path
+            local http_code
 
-          echo "Checking GitLab project access"
-          curl --fail-with-body --silent --show-error \
-            --header "PRIVATE-TOKEN: ${GITLAB_TOKEN}" \
-            "https://gitlab.devair.ru/api/v4/projects/air%2Fsse-runtime" |
-            python -c 'import json, sys; project = json.load(sys.stdin); permissions = project.get("permissions") or {}; project_access = permissions.get("project_access") or {}; group_access = permissions.get("group_access") or {}; print("GitLab project: {}, default branch: {}, project access: {}, group access: {}".format(project.get("path_with_namespace"), project.get("default_branch"), project_access.get("access_level"), group_access.get("access_level")))'
+            response_path="$(mktemp)"
+            http_code="$(
+              curl --silent --show-error \
+                --output "$response_path" \
+                --write-out "%{http_code}" \
+                --header "PRIVATE-TOKEN: ${GITLAB_TOKEN}" \
+                "$url"
+            )"
+
+            echo "${label}: HTTP ${http_code}"
+
+            if [ "$http_code" = "200" ]; then
+              python -c "$parser" < "$response_path"
+            else
+              echo "::warning::${label} failed; continuing to Git push for the authoritative error"
+            fi
+
+            rm -f "$response_path"
+          }
+
+          check_gitlab_api \
+            "GitLab token identity" \
+            "https://gitlab.devair.ru/api/v4/user" \
+            'import json, sys; user = json.load(sys.stdin); print("GitLab user: @{} ({})".format(user.get("username"), user.get("name")))'
+
+          check_gitlab_api \
+            "GitLab project access" \
+            "https://gitlab.devair.ru/api/v4/projects/air%2Fsse-runtime" \
+            'import json, sys; project = json.load(sys.stdin); permissions = project.get("permissions") or {}; project_access = permissions.get("project_access") or {}; group_access = permissions.get("group_access") or {}; print("GitLab project: {}, default branch: {}, project access: {}, group access: {}".format(project.get("path_with_namespace"), project.get("default_branch"), project_access.get("access_level"), group_access.get("access_level")))'
 
           git -c credential.helper= push --no-verify "$GITLAB_URL" \
             refs/remotes/origin/main:refs/heads/develop
