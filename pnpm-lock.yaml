@@ -129,7 +129,7 @@ importers:
   packages/react-native:
     dependencies:
       '@flamefrontend/sse-runtime-core':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../core
     devDependencies:
       '@testing-library/dom':

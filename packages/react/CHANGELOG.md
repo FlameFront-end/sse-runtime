@@ -10,8 +10,14 @@
 ### Patch Changes
 
 - Updated dependencies [d259be9]
+  - @flamefrontend/sse-runtime-core@0.8.0
+
+## 0.5.2
+
+### Patch Changes
+
 - Updated dependencies [35e9918]
-  - @flamefrontend/sse-runtime-core@0.9.0
+  - @flamefrontend/sse-runtime-core@0.7.0
 
 ## 0.5.1
 

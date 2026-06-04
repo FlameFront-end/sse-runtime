@@ -1,6 +1,6 @@
 {
   "name": "@flamefrontend/sse-runtime-react-native",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "React Native hooks and lifecycle helpers for @flamefrontend/sse-runtime-core.",
   "keywords": [
     "sse",
@@ -44,7 +44,7 @@
     "react": "^18.3.0 || ^19.0.0"
   },
   "dependencies": {
-    "@flamefrontend/sse-runtime-core": "workspace:^"
+    "@flamefrontend/sse-runtime-core": "workspace:*"
   },
   "devDependencies": {
     "@testing-library/dom": "^10.4.1",
