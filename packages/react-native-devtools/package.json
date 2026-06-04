@@ -1,6 +1,6 @@
 {
   "name": "@flamefrontend/sse-runtime-react-native-devtools",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "React Native developer tools panel for @flamefrontend/sse-runtime-react-native.",
   "keywords": [
     "sse",
@@ -43,8 +43,8 @@
     "access": "public"
   },
   "peerDependencies": {
-    "@flamefrontend/sse-runtime-core": "^0.9.0",
-    "@flamefrontend/sse-runtime-react-native": "^0.3.0",
+    "@flamefrontend/sse-runtime-core": "^0.9.1",
+    "@flamefrontend/sse-runtime-react-native": "^0.3.1",
     "react": "^18.3.0 || ^19.0.0",
     "react-native": ">=0.72.0"
   },

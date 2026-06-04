@@ -1,5 +1,14 @@
 # @flamefrontend/sse-runtime-react-native-devtools
 
+## 1.0.2
+
+### Patch Changes
+
+- ba88d19: Rework the React Native DevTools panel as a mobile-first bottom sheet with connection-to-log navigation, draggable height resizing, theme switching, event export hooks, and copy/expand controls for event payloads. Add React Native/default export conditions for Metro compatibility.
+- Updated dependencies [ba88d19]
+  - @flamefrontend/sse-runtime-react-native@0.3.1
+  - @flamefrontend/sse-runtime-core@0.9.1
+
 ## 1.0.1
 
 ### Patch Changes

@@ -1,5 +1,12 @@
 # @flamefrontend/sse-runtime-react
 
+## 0.6.1
+
+### Patch Changes
+
+- Updated dependencies [ba88d19]
+  - @flamefrontend/sse-runtime-core@0.9.1
+
 ## 0.6.0
 
 ### Minor Changes

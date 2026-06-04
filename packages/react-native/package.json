@@ -1,6 +1,6 @@
 {
   "name": "@flamefrontend/sse-runtime-react-native",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "React Native hooks and lifecycle helpers for @flamefrontend/sse-runtime-core.",
   "keywords": [
     "sse",
