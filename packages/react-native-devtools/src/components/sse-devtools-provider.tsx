@@ -5,6 +5,7 @@ import {
   createReactNativeDevtoolsRegistry,
   type ReactNativeDevtoolsSnapshot
 } from "../registry/devtools-registry";
+import type { ReactNativeDevtoolsClientRecord } from "../registry/types";
 import type { DevtoolsTheme } from "../theme/tokens";
 import { ReactNativeSSEDevtoolsPanel } from "./sse-devtools-panel";
 
@@ -19,6 +20,24 @@ export type ReactNativeSSEDevtoolsProviderProps = {
   readonly panelHeight?: number;
   readonly theme?: DevtoolsTheme;
   readonly toggleButtonPosition?: "bottom-left" | "bottom-right" | "top-left" | "top-right";
+  readonly onCopyPayload?: (payload: string) => void | Promise<void>;
+  readonly onExportEvents?: (payload: ReactNativeSSEDevtoolsExportPayload) => void | Promise<void>;
+};
+
+export type ReactNativeSSEDevtoolsExportPayload = {
+  readonly url: string;
+  readonly key: string;
+  readonly status: ReactNativeDevtoolsClientRecord["status"];
+  readonly role: ReactNativeDevtoolsClientRecord["role"];
+  readonly totalEvents: number;
+  readonly eventsInLog: number;
+  readonly truncated: boolean;
+  readonly exportedAt: string;
+  readonly events: readonly {
+    readonly type: string;
+    readonly data: unknown;
+    readonly timestamp: string;
+  }[];
 };
 
 export function ReactNativeSSEDevtoolsProvider(
@@ -38,13 +57,20 @@ function ActiveReactNativeSSEDevtoolsProvider({
   initialOpen = false,
   hideToggleButton = false,
   maxEvents,
+  onCopyPayload,
+  onExportEvents,
   panelHeight = 420,
   theme = "dark",
   toggleButtonPosition = "bottom-right"
 }: ActiveProps): ReactNode {
   const registry = useMemo(() => createReactNativeDevtoolsRegistry({ maxEvents }), [maxEvents]);
   const [isOpen, setIsOpen] = useState(initialOpen);
+  const [currentTheme, setCurrentTheme] = useState(theme);
   const toggleOpen = useCallback(() => setIsOpen((current) => !current), []);
+  const toggleTheme = useCallback(
+    () => setCurrentTheme((current) => (current === "dark" ? "light" : "dark")),
+    []
+  );
   const clients = useSyncExternalStore(
     registry.subscribe,
     registry.getSnapshot,
@@ -59,9 +85,12 @@ function ActiveReactNativeSSEDevtoolsProvider({
         clearEvents={registry.clearEvents}
         hideToggleButton={hideToggleButton}
         isOpen={isOpen}
+        onCopyPayload={onCopyPayload}
+        onExportEvents={onExportEvents}
         panelHeight={panelHeight}
-        theme={theme}
+        theme={currentTheme}
         toggleButtonPosition={toggleButtonPosition}
+        onToggleTheme={toggleTheme}
         onToggle={toggleOpen}
       />
     </ReactNativeSSEDevtoolsRegistrationContext.Provider>

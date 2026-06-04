@@ -40,6 +40,10 @@ export function expandedData(data: unknown): string {
   }
 }
 
+export function canExpandData(data: unknown): boolean {
+  return expandedData(data) !== formatData(data);
+}
+
 export function formatAgo(from: number, now: number = Date.now()): string {
   const seconds = Math.max(0, Math.round((now - from) / 1000));
   if (seconds < 1) return "just now";
