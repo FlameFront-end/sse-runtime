@@ -27,13 +27,17 @@ export function ActionButton({
 
 const styles = StyleSheet.create({
   actionButton: {
-    borderRadius: 6,
+    alignItems: "center",
+    borderRadius: 8,
     borderWidth: 1,
+    flex: 1,
+    justifyContent: "center",
+    minHeight: 38,
     paddingHorizontal: 8,
-    paddingVertical: 7
+    paddingVertical: 8
   },
   actionText: {
-    fontSize: 11,
-    fontWeight: "600"
+    fontSize: 12,
+    fontWeight: "700"
   }
 });
