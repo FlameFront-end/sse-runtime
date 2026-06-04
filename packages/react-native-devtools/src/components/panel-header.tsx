@@ -1,11 +1,14 @@
+import type { SSEConnectionStatus } from "@flamefrontend/sse-runtime-core";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
-import type { DevtoolsPalette } from "../theme/tokens";
+import { statusColor, type DevtoolsPalette } from "../theme/tokens";
+import { StatusDot } from "./status-dot";
 
 type PanelHeaderProps = {
   readonly connectionCount: number;
   readonly isDetailVisible: boolean;
   readonly palette: DevtoolsPalette;
+  readonly status?: SSEConnectionStatus;
   readonly subtitle?: string;
   readonly title?: string;
   readonly onBack?: () => void;
@@ -17,6 +20,7 @@ export function PanelHeader({
   connectionCount,
   isDetailVisible,
   palette,
+  status,
   subtitle,
   title = "SSE DevTools",
   onBack,
@@ -43,9 +47,12 @@ export function PanelHeader({
           <Text numberOfLines={1} style={[styles.title, { color: palette.text }]}>
             {title}
           </Text>
-          <Text numberOfLines={1} style={[styles.subtitle, { color: palette.textMuted }]}>
-            {subtitle ?? `${connectionCount} connection${connectionCount === 1 ? "" : "s"}`}
-          </Text>
+          <View style={styles.subtitleRow}>
+            {status ? <StatusDot color={statusColor(status, palette)} /> : null}
+            <Text numberOfLines={1} style={[styles.subtitle, { color: palette.textMuted }]}>
+              {subtitle ?? `${connectionCount} connection${connectionCount === 1 ? "" : "s"}`}
+            </Text>
+          </View>
         </View>
       </View>
       <View style={styles.headerActions}>
@@ -115,8 +122,16 @@ const styles = StyleSheet.create({
     gap: 6
   },
   subtitle: {
+    flex: 1,
     fontSize: 11,
-    marginTop: 2
+    minWidth: 0
+  },
+  subtitleRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 6,
+    marginTop: 2,
+    minWidth: 0
   },
   titleBlock: {
     flex: 1,

@@ -61,6 +61,7 @@ export const ReactNativeSSEDevtoolsPanel = memo(function ReactNativeSSEDevtoolsP
     clampPanelHeight(panelHeight, MIN_PANEL_HEIGHT, maxPanelHeight)
   );
   const animationProgress = useRef(new Animated.Value(isOpen ? 1 : 0)).current;
+  const dragTranslateY = useRef(new Animated.Value(0)).current;
   const dragStartHeight = useRef(height);
 
   useEffect(() => {
@@ -74,24 +75,45 @@ export const ReactNativeSSEDevtoolsPanel = memo(function ReactNativeSSEDevtoolsP
         onMoveShouldSetPanResponder: (_event, gesture) => Math.abs(gesture.dy) > 4,
         onPanResponderGrant: () => {
           dragStartHeight.current = height;
+          dragTranslateY.setValue(0);
         },
         onPanResponderMove: (_event, gesture) => {
-          setHeight(
-            clampPanelHeight(dragStartHeight.current - gesture.dy, MIN_PANEL_HEIGHT, maxPanelHeight)
+          const nextHeight = clampPanelHeight(
+            dragStartHeight.current - gesture.dy,
+            MIN_PANEL_HEIGHT,
+            maxPanelHeight
           );
+
+          if (gesture.dy <= 0 || nextHeight > MIN_PANEL_HEIGHT) {
+            dragTranslateY.setValue(0);
+            setHeight(nextHeight);
+            return;
+          }
+
+          setHeight(MIN_PANEL_HEIGHT);
+          dragTranslateY.setValue(gesture.dy - (dragStartHeight.current - MIN_PANEL_HEIGHT));
         },
         onPanResponderRelease: (_event, gesture) => {
           if (gesture.dy > CLOSE_DRAG_DISTANCE || gesture.vy > CLOSE_DRAG_VELOCITY) {
             onToggle();
+            return;
           }
+
+          Animated.timing(dragTranslateY, {
+            duration: PANEL_ANIMATION_MS,
+            easing: Easing.out(Easing.cubic),
+            toValue: 0,
+            useNativeDriver: true
+          }).start();
         }
       }),
-    [height, maxPanelHeight, onToggle]
+    [dragTranslateY, height, maxPanelHeight, onToggle]
   );
 
   useEffect(() => {
     if (isOpen) {
       setIsPanelMounted(true);
+      dragTranslateY.setValue(0);
       Animated.timing(animationProgress, {
         duration: PANEL_ANIMATION_MS,
         easing: Easing.out(Easing.cubic),
@@ -108,10 +130,11 @@ export const ReactNativeSSEDevtoolsPanel = memo(function ReactNativeSSEDevtoolsP
       useNativeDriver: true
     }).start(({ finished }) => {
       if (finished) {
+        dragTranslateY.setValue(0);
         setIsPanelMounted(false);
       }
     });
-  }, [animationProgress, isOpen]);
+  }, [animationProgress, dragTranslateY, isOpen]);
 
   useEffect(() => {
     if (records.length === 0) {
@@ -149,6 +172,7 @@ export const ReactNativeSSEDevtoolsPanel = memo(function ReactNativeSSEDevtoolsP
     inputRange: [0, 1],
     outputRange: [height + 24, 0]
   });
+  const panelCombinedTranslateY = Animated.add(panelTranslateY, dragTranslateY);
 
   return (
     <View style={styles.overlay} pointerEvents="box-none">
@@ -169,7 +193,7 @@ export const ReactNativeSSEDevtoolsPanel = memo(function ReactNativeSSEDevtoolsP
             backgroundColor: palette.background,
             borderColor: palette.border,
             height,
-            transform: [{ translateY: panelTranslateY }]
+            transform: [{ translateY: panelCombinedTranslateY }]
           }
         ]}
       >
@@ -181,6 +205,7 @@ export const ReactNativeSSEDevtoolsPanel = memo(function ReactNativeSSEDevtoolsP
           connectionCount={records.length}
           isDetailVisible={!showConnections}
           palette={palette}
+          status={selectedRecord && !showConnections ? selectedRecord.status : undefined}
           subtitle={selectedRecord && !showConnections ? selectedRecord.url : undefined}
           title={selectedRecord && !showConnections ? "SSE Logs" : "SSE DevTools"}
           onBack={records.length > 1 ? () => setIsDetailVisible(false) : undefined}
