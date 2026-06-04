@@ -37,8 +37,7 @@ jobs:
 
       # When changesets exist on main, this opens/updates a "Version Packages" PR.
       # When that PR is merged (versions bumped, no changesets left), it runs the
-      # publish command, creating git tags and GitHub releases. Publishing uses
-      # OIDC Trusted Publishing — no long-lived NPM_TOKEN.
+      # publish command, creating git tags and GitHub releases.
       - name: Create release PR or publish
         uses: changesets/action@v1
         with:
@@ -48,3 +47,4 @@ jobs:
           title: "chore: release"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
