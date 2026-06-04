@@ -16,4 +16,6 @@ export type {
   ReactNativeNetInfoState,
   ReactNativeSubscription
 } from "./lifecycle/types";
+export { createReactNativeXHRTransport } from "./transport/create-react-native-xhr-transport";
+export type { ReactNativeXHRTransportOptions } from "./transport/create-react-native-xhr-transport";
 export type { UseReactNativeSSEResult } from "./types/public";

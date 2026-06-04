@@ -26,6 +26,7 @@ import NetInfo from "@react-native-community/netinfo";
 import { useEffect } from "react";
 import {
   attachReactNativeLifecycleResume,
+  createReactNativeXHRTransport,
   useReactNativeSSE
 } from "@flamefrontend/sse-runtime-react-native";
 
@@ -37,16 +38,21 @@ type ChatEvents = {
 };
 
 export function ChatStream({ chatId }: { chatId: string }) {
-  const connection = useReactNativeSSE<ChatEvents>({
-    key: ["chat", chatId],
-    url: `https://example.com/api/chats/${chatId}/stream`,
-    enabled: Boolean(chatId),
-    events: {
-      message: (message) => {
-        console.log(message.text);
+  const connection = useReactNativeSSE<ChatEvents>(
+    {
+      key: ["chat", chatId],
+      url: `https://example.com/api/chats/${chatId}/stream`,
+      enabled: Boolean(chatId),
+      events: {
+        message: (message) => {
+          console.log(message.text);
+        }
       }
+    },
+    {
+      transport: createReactNativeXHRTransport()
     }
-  });
+  );
 
   useEffect(() => {
     return attachReactNativeLifecycleResume(connection.client, {
@@ -65,8 +71,9 @@ export function ChatStream({ chatId }: { chatId: string }) {
 React Native networking support differs by version, platform, runtime, and
 polyfills. The default core transport uses `fetch`, `Response.body`,
 `ReadableStream`, and `TextDecoder`. If your app runtime does not provide a
-compatible streaming response body, pass a custom core `transport` and
-`createTextDecoder` through the second `useReactNativeSSE` argument.
+compatible streaming response body, use `createReactNativeXHRTransport()` or
+pass another custom core `transport` through the second `useReactNativeSSE`
+argument.
 
 ```tsx
 const connection = useReactNativeSSE(
@@ -75,11 +82,15 @@ const connection = useReactNativeSSE(
     url: "https://example.com/api/chat/stream"
   },
   {
-    transport: createReactNativeSSETransport(),
+    transport: createReactNativeXHRTransport(),
     createTextDecoder: () => new TextDecoder()
   }
 );
 ```
+
+`createReactNativeXHRTransport()` uses `XMLHttpRequest.onprogress` and emits
+incremental `responseText` chunks through the core stream reader. It does not
+import `react-native`, so apps keep control over their runtime and polyfills.
 
 ## Shared Client
 
