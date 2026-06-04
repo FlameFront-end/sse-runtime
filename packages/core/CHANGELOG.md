@@ -1,6 +1,6 @@
 # @flamefrontend/sse-runtime-core
 
-## 0.8.0
+## 0.9.0
 
 ### Minor Changes
 
@@ -8,10 +8,6 @@
   - `createBearerAuth(getToken, options?)` returns ready-to-spread `headers` and `auth` options for token authentication. The token provider is resolved before every connection attempt and again on `401` (so a refreshing provider recovers transparently), `Authorization` is omitted when no token is available, and the scheme and extra headers are configurable.
   - `attachReconnectNotifications(client, { onReconnecting, onReconnected, onFailed })` turns raw status transitions into reconnect-lifecycle callbacks — fired only for real drops and recoveries, not the initial connect or a manual `disconnect()`. Returns a cleanup function.
     </content>
-
-## 0.7.0
-
-### Minor Changes
 
 - 35e9918: Expose the coordination role on coordinated clients. A client created with `coordination: { enabled: true }` now offers `getRole()` and `subscribeRole(listener)`, reporting `"leader"` (this tab owns the real connection) or `"follower"` (this tab mirrors the leader over a `BroadcastChannel`), or `null` once disconnected. Non-coordinated clients omit both methods. This makes the leader/follower split observable without wiring up the `onCoordinationRoleChange` diagnostic.
   </content>

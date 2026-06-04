@@ -16,6 +16,11 @@ export type {
   ReactNativeNetInfoState,
   ReactNativeSubscription
 } from "./lifecycle/types";
+export { ReactNativeSSEDevtoolsRegistrationContext } from "./devtools/devtools-registration-context";
+export type {
+  ReactNativeSSEDevtoolsClientInfo,
+  ReactNativeSSEDevtoolsRegistration
+} from "./devtools/devtools-registration-context";
 export { createReactNativeXHRTransport } from "./transport/create-react-native-xhr-transport";
 export type { ReactNativeXHRTransportOptions } from "./transport/create-react-native-xhr-transport";
 export type { UseReactNativeSSEResult } from "./types/public";

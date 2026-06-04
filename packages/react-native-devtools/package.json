@@ -1,0 +1,65 @@
+{
+  "name": "@flamefrontend/sse-runtime-react-native-devtools",
+  "version": "1.0.1",
+  "description": "React Native developer tools panel for @flamefrontend/sse-runtime-react-native.",
+  "keywords": [
+    "sse",
+    "server-sent-events",
+    "devtools",
+    "developer-tools",
+    "react-native",
+    "debugging"
+  ],
+  "license": "MIT",
+  "author": "FlameFront-end",
+  "homepage": "https://github.com/FlameFront-end/sse-runtime#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/FlameFront-end/sse-runtime",
+    "directory": "packages/react-native-devtools"
+  },
+  "bugs": {
+    "url": "https://github.com/FlameFront-end/sse-runtime/issues"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "peerDependencies": {
+    "@flamefrontend/sse-runtime-core": "^0.9.0",
+    "@flamefrontend/sse-runtime-react-native": "^0.3.0",
+    "react": "^18.3.0 || ^19.0.0",
+    "react-native": ">=0.72.0"
+  },
+  "devDependencies": {
+    "@flamefrontend/sse-runtime-core": "workspace:*",
+    "@flamefrontend/sse-runtime-react-native": "workspace:*",
+    "@types/react": "^19.1.6",
+    "react": "^19.1.0",
+    "react-native": "^0.81.5",
+    "typescript": "^5.8.3",
+    "vitest": "^3.1.4"
+  },
+  "scripts": {
+    "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
+    "build": "pnpm run clean && tsc -p tsconfig.build.json",
+    "lint": "eslint src --ext .ts,.tsx",
+    "test": "vitest run --passWithNoTests",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  }
+}

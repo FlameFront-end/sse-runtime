@@ -10,6 +10,7 @@ import {
   useReactNativeSSE,
   useReactNativeSSEContext
 } from "./use-react-native-sse";
+import { ReactNativeSSEDevtoolsRegistrationContext } from "../devtools/devtools-registration-context";
 
 vi.mock("@flamefrontend/sse-runtime-core", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@flamefrontend/sse-runtime-core")>();
@@ -62,6 +63,26 @@ describe("useReactNativeSSE", () => {
 
     await waitFor(() => {
       expect(onClient).toHaveBeenCalledWith(client);
+    });
+  });
+
+  it("registers the client with React Native devtools when a registration context is present", async () => {
+    const client = createClient();
+    vi.mocked(createSSEClient).mockReturnValue(client);
+    const register = vi.fn(() => () => undefined);
+
+    render(
+      <ReactNativeSSEDevtoolsRegistrationContext.Provider value={{ register }}>
+        <HookProbe options={createOptions()} />
+      </ReactNativeSSEDevtoolsRegistrationContext.Provider>
+    );
+
+    await waitFor(() => {
+      expect(register).toHaveBeenCalledWith({
+        id: '["chat"]',
+        url: "/stream",
+        client
+      });
     });
   });
 });
