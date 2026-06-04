@@ -1,5 +1,12 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
-import { PanResponder, StyleSheet, View, useWindowDimensions } from "react-native";
+import {
+  Animated,
+  Easing,
+  PanResponder,
+  StyleSheet,
+  View,
+  useWindowDimensions
+} from "react-native";
 
 import type { ReactNativeDevtoolsSnapshot } from "../registry/types";
 import type { ReactNativeSSEDevtoolsExportPayload } from "./sse-devtools-provider";
@@ -12,6 +19,9 @@ import { ToggleButton } from "./toggle-button";
 
 const MIN_PANEL_HEIGHT = 300;
 const MAX_PANEL_TOP_INSET = 56;
+const PANEL_ANIMATION_MS = 180;
+const CLOSE_DRAG_DISTANCE = 72;
+const CLOSE_DRAG_VELOCITY = 1.1;
 
 export type ReactNativeSSEDevtoolsPanelProps = {
   readonly clients: ReactNativeDevtoolsSnapshot;
@@ -46,9 +56,11 @@ export const ReactNativeSSEDevtoolsPanel = memo(function ReactNativeSSEDevtoolsP
   const records = useMemo(() => Array.from(clients.values()), [clients]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [isDetailVisible, setIsDetailVisible] = useState(false);
+  const [isPanelMounted, setIsPanelMounted] = useState(isOpen);
   const [height, setHeight] = useState(() =>
     clampPanelHeight(panelHeight, MIN_PANEL_HEIGHT, maxPanelHeight)
   );
+  const animationProgress = useRef(new Animated.Value(isOpen ? 1 : 0)).current;
   const dragStartHeight = useRef(height);
 
   useEffect(() => {
@@ -58,6 +70,7 @@ export const ReactNativeSSEDevtoolsPanel = memo(function ReactNativeSSEDevtoolsP
   const panResponder = useMemo(
     () =>
       PanResponder.create({
+        onStartShouldSetPanResponder: () => true,
         onMoveShouldSetPanResponder: (_event, gesture) => Math.abs(gesture.dy) > 4,
         onPanResponderGrant: () => {
           dragStartHeight.current = height;
@@ -66,10 +79,39 @@ export const ReactNativeSSEDevtoolsPanel = memo(function ReactNativeSSEDevtoolsP
           setHeight(
             clampPanelHeight(dragStartHeight.current - gesture.dy, MIN_PANEL_HEIGHT, maxPanelHeight)
           );
+        },
+        onPanResponderRelease: (_event, gesture) => {
+          if (gesture.dy > CLOSE_DRAG_DISTANCE || gesture.vy > CLOSE_DRAG_VELOCITY) {
+            onToggle();
+          }
         }
       }),
-    [height, maxPanelHeight]
+    [height, maxPanelHeight, onToggle]
   );
+
+  useEffect(() => {
+    if (isOpen) {
+      setIsPanelMounted(true);
+      Animated.timing(animationProgress, {
+        duration: PANEL_ANIMATION_MS,
+        easing: Easing.out(Easing.cubic),
+        toValue: 1,
+        useNativeDriver: true
+      }).start();
+      return;
+    }
+
+    Animated.timing(animationProgress, {
+      duration: PANEL_ANIMATION_MS,
+      easing: Easing.in(Easing.cubic),
+      toValue: 0,
+      useNativeDriver: true
+    }).start(({ finished }) => {
+      if (finished) {
+        setIsPanelMounted(false);
+      }
+    });
+  }, [animationProgress, isOpen]);
 
   useEffect(() => {
     if (records.length === 0) {
@@ -87,7 +129,7 @@ export const ReactNativeSSEDevtoolsPanel = memo(function ReactNativeSSEDevtoolsP
   const selectedRecord = selectedId ? (clients.get(selectedId) ?? null) : null;
   const showConnections = !isDetailVisible || !selectedRecord;
 
-  if (!isOpen && !hideToggleButton) {
+  if (!isOpen && !isPanelMounted && !hideToggleButton) {
     return (
       <ToggleButton
         connectionCount={records.length}
@@ -99,19 +141,35 @@ export const ReactNativeSSEDevtoolsPanel = memo(function ReactNativeSSEDevtoolsP
     );
   }
 
-  if (!isOpen) {
+  if (!isOpen && !isPanelMounted) {
     return null;
   }
 
+  const panelTranslateY = animationProgress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [height + 24, 0]
+  });
+
   return (
-    <View style={[styles.overlay, { backgroundColor: palette.overlay }]} pointerEvents="box-none">
-      <View
+    <View style={styles.overlay} pointerEvents="box-none">
+      <Animated.View
+        pointerEvents="none"
+        style={[
+          styles.overlayShade,
+          {
+            backgroundColor: palette.overlay,
+            opacity: animationProgress
+          }
+        ]}
+      />
+      <Animated.View
         style={[
           styles.panel,
           {
             backgroundColor: palette.background,
             borderColor: palette.border,
-            height
+            height,
+            transform: [{ translateY: panelTranslateY }]
           }
         ]}
       >
@@ -153,7 +211,7 @@ export const ReactNativeSSEDevtoolsPanel = memo(function ReactNativeSSEDevtoolsP
             <EmptyState palette={palette} text="No active SSE connections." />
           )}
         </View>
-      </View>
+      </Animated.View>
     </View>
   );
 });
@@ -170,11 +228,11 @@ const styles = StyleSheet.create({
   dragHandle: {
     borderRadius: 999,
     height: 4,
-    width: 40
+    width: 56
   },
   dragHandleArea: {
     alignItems: "center",
-    height: 20,
+    height: 32,
     justifyContent: "center"
   },
   overlay: {
@@ -184,6 +242,13 @@ const styles = StyleSheet.create({
     right: 0,
     top: 0,
     zIndex: 99999
+  },
+  overlayShade: {
+    bottom: 0,
+    left: 0,
+    position: "absolute",
+    right: 0,
+    top: 0
   },
   panel: {
     borderTopLeftRadius: 16,

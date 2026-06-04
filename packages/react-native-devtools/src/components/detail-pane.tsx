@@ -1,16 +1,15 @@
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
-import { ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { RATE_WINDOW_MS } from "../constants";
 import { formatAgo, formatData, formatDuration } from "../lib/format";
 import type { ReactNativeDevtoolsClientRecord } from "../registry/types";
-import { statusColor, statusLabel, type DevtoolsPalette } from "../theme/tokens";
+import type { DevtoolsPalette } from "../theme/tokens";
 import { ActionButton } from "./action-button";
 import { EmptyState } from "./empty-state";
 import { EventRow } from "./event-row";
 import { Metric } from "./metric";
 import type { ReactNativeSSEDevtoolsExportPayload } from "./sse-devtools-provider";
-import { StatusDot } from "./status-dot";
 
 type DetailPaneProps = {
   readonly clearEvents: (id: string) => void;
@@ -31,6 +30,7 @@ export const DetailPane = memo(function DetailPane({
   const [query, setQuery] = useState("");
   const [frozenEvents, setFrozenEvents] = useState(record.events);
   const [notice, setNotice] = useState<string | null>(null);
+  const [areMetricsExpanded, setAreMetricsExpanded] = useState(false);
   const sourceEvents = paused ? frozenEvents : record.events;
   const bufferedWhilePaused = paused ? record.totalEvents - sourceEvents.length : 0;
 
@@ -52,12 +52,16 @@ export const DetailPane = memo(function DetailPane({
 
   const now = Date.now();
   const eventsPerSecond = calculateEventsPerSecond(record, now);
-  const status = statusColor(record.status, palette);
+  const uptime = record.connectedAt ? formatDuration(record.connectedAt, now) : "-";
+  const lastEvent = record.lastEventAt ? formatAgo(record.lastEventAt, now) : "-";
   const clear = useCallback(() => {
     setFrozenEvents([]);
     clearEvents(record.id);
   }, [clearEvents, record.id]);
   const togglePause = useCallback(() => setPaused((value) => !value), []);
+  const toggleMetrics = useCallback(() => {
+    setAreMetricsExpanded((value) => !value);
+  }, []);
   const exportEvents = useCallback(() => {
     const payload = createExportPayload(record);
 
@@ -74,23 +78,6 @@ export const DetailPane = memo(function DetailPane({
 
   return (
     <View style={styles.detailShell}>
-      <View style={[styles.detailHeader, { borderBottomColor: palette.borderSoft }]}>
-        <View style={styles.detailTitleBlock}>
-          <Text numberOfLines={1} style={[styles.detailUrl, { color: palette.text }]}>
-            {record.key}
-          </Text>
-          <View style={styles.detailMeta}>
-            <StatusDot color={status} />
-            <Text style={[styles.detailStatus, { color: status }]}>
-              {statusLabel(record.status)}
-            </Text>
-            <Text style={[styles.detailKey, { color: palette.textMuted }]}>
-              {record.totalEvents} events
-            </Text>
-          </View>
-        </View>
-      </View>
-
       <View style={[styles.actions, { borderBottomColor: palette.borderSoft }]}>
         <ActionButton
           label="Connect"
@@ -114,20 +101,42 @@ export const DetailPane = memo(function DetailPane({
         </View>
       )}
 
-      <View style={styles.metrics}>
-        <Metric label="Events" palette={palette} value={record.totalEvents} />
-        <Metric label="Events / sec" palette={palette} value={eventsPerSecond} />
-        <Metric
-          label="Uptime"
-          palette={palette}
-          value={record.connectedAt ? formatDuration(record.connectedAt, now) : "-"}
-        />
-        <Metric label="Reconnects" palette={palette} value={record.reconnectCount} />
-        <Metric
-          label="Last"
-          palette={palette}
-          value={record.lastEventAt ? formatAgo(record.lastEventAt, now) : "-"}
-        />
+      <View style={styles.metricsShell}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={areMetricsExpanded ? "Collapse SSE metrics" : "Expand SSE metrics"}
+          style={[
+            styles.metricsSummary,
+            { backgroundColor: palette.card, borderColor: palette.border }
+          ]}
+          onPress={toggleMetrics}
+        >
+          <View style={styles.metricsSummaryText}>
+            <Text numberOfLines={1} style={[styles.metricsSummaryTitle, { color: palette.text }]}>
+              Stats
+            </Text>
+            <Text
+              numberOfLines={1}
+              style={[styles.metricsSummaryValue, { color: palette.textMuted }]}
+            >
+              {record.totalEvents} evt · {eventsPerSecond}/s · {uptime} · {record.reconnectCount}{" "}
+              rec · last {lastEvent}
+            </Text>
+          </View>
+          <Text style={[styles.metricsToggle, { color: palette.text }]}>
+            {areMetricsExpanded ? "Hide" : "Show"}
+          </Text>
+        </Pressable>
+
+        {areMetricsExpanded ? (
+          <View style={styles.metrics}>
+            <Metric label="Events" palette={palette} value={record.totalEvents} />
+            <Metric label="Events / sec" palette={palette} value={eventsPerSecond} />
+            <Metric label="Uptime" palette={palette} value={uptime} />
+            <Metric label="Reconnects" palette={palette} value={record.reconnectCount} />
+            <Metric label="Last" palette={palette} value={lastEvent} />
+          </View>
+        ) : null}
       </View>
 
       <View style={[styles.eventToolbar, { borderColor: palette.borderSoft }]}>
@@ -228,36 +237,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 8
   },
-  detailHeader: {
-    borderBottomWidth: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 10
-  },
-  detailKey: {
-    fontSize: 11
-  },
-  detailMeta: {
-    alignItems: "center",
-    flexDirection: "row",
-    gap: 6,
-    marginTop: 5
-  },
   detailShell: {
     flex: 1,
     minHeight: 0
-  },
-  detailStatus: {
-    fontSize: 11,
-    fontWeight: "600"
-  },
-  detailTitleBlock: {
-    flex: 1,
-    minWidth: 0
-  },
-  detailUrl: {
-    fontFamily: "monospace",
-    fontSize: 13,
-    fontWeight: "700"
   },
   errorBox: {
     borderRadius: 6,
@@ -305,7 +287,37 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 8,
+    paddingTop: 8
+  },
+  metricsShell: {
     padding: 10
+  },
+  metricsSummary: {
+    alignItems: "center",
+    borderRadius: 9,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 10,
+    minHeight: 44,
+    paddingHorizontal: 12,
+    paddingVertical: 8
+  },
+  metricsSummaryText: {
+    flex: 1,
+    minWidth: 0
+  },
+  metricsSummaryTitle: {
+    fontSize: 12,
+    fontWeight: "700"
+  },
+  metricsSummaryValue: {
+    fontSize: 11,
+    marginTop: 2
+  },
+  metricsToggle: {
+    flexShrink: 0,
+    fontSize: 12,
+    fontWeight: "700"
   },
   notice: {
     fontSize: 11
