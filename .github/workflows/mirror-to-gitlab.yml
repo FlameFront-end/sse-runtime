@@ -1,0 +1,73 @@
+name: Mirror to GitLab
+
+on:
+  workflow_run:
+    workflows: ["Release"]
+    types: [completed]
+    branches: [main]
+  push:
+    tags:
+      - "*"
+  workflow_dispatch:
+
+concurrency:
+  group: mirror-to-gitlab
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  mirror:
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout full repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Mirror refs to GitLab
+        env:
+          GITLAB_URL: https://gitlab.devair.ru/air/sse-runtime.git
+          GITLAB_USERNAME: flamefront-end
+          GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          : "${GITLAB_TOKEN:?GITLAB_TOKEN secret is required}"
+
+          git fetch origin '+refs/heads/*:refs/remotes/origin/*' --tags --prune
+
+          askpass="$(mktemp)"
+          trap 'rm -f "$askpass"' EXIT
+
+          cat > "$askpass" <<'EOF'
+          #!/usr/bin/env sh
+          case "$1" in
+            *Username*) printf '%s\n' "$GITLAB_USERNAME" ;;
+            *Password*) printf '%s\n' "$GITLAB_TOKEN" ;;
+            *) printf '\n' ;;
+          esac
+          EOF
+          chmod 700 "$askpass"
+
+          export GIT_ASKPASS="$askpass"
+          export GIT_TERMINAL_PROMPT=0
+
+          git -c credential.helper= push --no-verify "$GITLAB_URL" \
+            +refs/remotes/origin/main:refs/heads/develop
+
+          git for-each-ref --format='%(refname)' refs/remotes/origin |
+            while read -r branch_ref; do
+              case "$branch_ref" in
+                refs/remotes/origin/main|refs/remotes/origin/HEAD) continue ;;
+              esac
+
+              branch_name="${branch_ref#refs/remotes/origin/}"
+              git -c credential.helper= push --no-verify "$GITLAB_URL" \
+                "+${branch_ref}:refs/heads/${branch_name}"
+            done
+
+          git -c credential.helper= push --no-verify --tags "$GITLAB_URL"
