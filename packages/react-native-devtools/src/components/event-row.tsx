@@ -57,7 +57,7 @@ export const EventRow = memo(function EventRow({
     <Pressable
       accessibilityRole={canExpand ? "button" : undefined}
       style={[
-        styles.eventRow,
+        styles.eventContainer,
         {
           backgroundColor: expanded ? palette.card : palette.background,
           borderBottomColor: palette.borderSoft
@@ -65,68 +65,83 @@ export const EventRow = memo(function EventRow({
       ]}
       onPress={toggleExpanded}
     >
-      <View style={styles.eventHeader}>
+      <View style={styles.eventRow}>
+        <Text style={[styles.eventTime, { color: palette.textMuted }]}>
+          {formatTime(event.timestamp)}
+        </Text>
         <Pressable
           onPress={selectType}
           style={[styles.eventTypePill, { borderColor: palette.border }]}
         >
           <Text style={[styles.eventType, { color: palette.accent }]}>{event.type}</Text>
         </Pressable>
-        <Text style={[styles.eventTime, { color: palette.textMuted }]}>
-          {formatTime(event.timestamp)}
+        <Text numberOfLines={1} style={[styles.eventPreview, { color: palette.textMuted }]}>
+          {preview}
         </Text>
+        <View style={styles.eventActions}>
+          <Pressable accessibilityRole="button" onPress={copyPayload}>
+            <Text
+              style={[
+                styles.eventActionText,
+                { color: copyState === "copied" ? palette.success : palette.textMuted }
+              ]}
+            >
+              {copyState === "copied" ? "Copied" : copyState === "failed" ? "Unavailable" : "Copy"}
+            </Text>
+          </Pressable>
+          {canExpand ? (
+            <Text style={[styles.eventActionText, { color: palette.textMuted }]}>
+              {expanded ? "Hide" : "View"}
+            </Text>
+          ) : null}
+        </View>
       </View>
-      <Text style={[styles.eventData, { color: palette.text }]}>
-        {expanded ? payload : preview}
-      </Text>
-      <View style={styles.eventActions}>
-        <Pressable accessibilityRole="button" onPress={copyPayload}>
-          <Text style={[styles.eventActionText, { color: palette.textMuted }]}>
-            {copyState === "copied"
-              ? "Copied"
-              : copyState === "failed"
-                ? "Copy unavailable"
-                : "Copy"}
-          </Text>
-        </Pressable>
-        {canExpand ? (
-          <Text style={[styles.eventActionText, { color: palette.textMuted }]}>
-            {expanded ? "Hide" : "View"}
-          </Text>
-        ) : null}
-      </View>
+
+      {expanded ? (
+        <View
+          style={[
+            styles.payloadBox,
+            { backgroundColor: palette.background, borderColor: palette.border }
+          ]}
+        >
+          <Text style={[styles.payloadText, { color: palette.text }]}>{payload}</Text>
+        </View>
+      ) : null}
     </Pressable>
   );
 });
 
 const styles = StyleSheet.create({
-  eventData: {
-    fontFamily: "monospace",
-    fontSize: 11,
-    lineHeight: 16,
-    marginTop: 6
-  },
-  eventHeader: {
+  eventActions: {
     alignItems: "center",
     flexDirection: "row",
-    justifyContent: "space-between"
-  },
-  eventActions: {
-    flexDirection: "row",
-    gap: 12,
-    justifyContent: "flex-end",
-    marginTop: 8
+    flexShrink: 0,
+    gap: 8,
+    marginLeft: "auto"
   },
   eventActionText: {
     fontSize: 10,
     fontWeight: "700"
   },
-  eventRow: {
+  eventContainer: {
     borderBottomWidth: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 10
+    paddingHorizontal: 10,
+    paddingVertical: 7
+  },
+  eventPreview: {
+    flex: 1,
+    fontFamily: "monospace",
+    fontSize: 11,
+    minWidth: 0
+  },
+  eventRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 8,
+    minHeight: 32
   },
   eventTime: {
+    flexShrink: 0,
     fontFamily: "monospace",
     fontSize: 10
   },
@@ -140,5 +155,17 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     paddingHorizontal: 8,
     paddingVertical: 3
+  },
+  payloadBox: {
+    borderRadius: 8,
+    borderWidth: 1,
+    marginTop: 8,
+    overflow: "hidden"
+  },
+  payloadText: {
+    fontFamily: "monospace",
+    fontSize: 11,
+    lineHeight: 16,
+    padding: 10
   }
 });

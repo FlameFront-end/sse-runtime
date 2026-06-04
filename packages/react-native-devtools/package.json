@@ -1,6 +1,6 @@
 {
   "name": "@flamefrontend/sse-runtime-react-native-devtools",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "React Native developer tools panel for @flamefrontend/sse-runtime-react-native.",
   "keywords": [
     "sse",
