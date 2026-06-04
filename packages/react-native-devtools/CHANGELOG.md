@@ -1,5 +1,11 @@
 # @flamefrontend/sse-runtime-react-native-devtools
 
+## 1.0.6
+
+### Patch Changes
+
+- d1a22da: Fix the React Native DevTools panel using native animated driver on unsupported height styles.
+
 ## 1.0.5
 
 ### Patch Changes
