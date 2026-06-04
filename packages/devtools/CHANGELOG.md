@@ -1,5 +1,13 @@
 # @flamefrontend/sse-runtime-devtools
 
+## 5.0.1
+
+### Patch Changes
+
+- Updated dependencies [ba88d19]
+  - @flamefrontend/sse-runtime-core@0.9.1
+  - @flamefrontend/sse-runtime-react@0.6.1
+
 ## 5.0.0
 
 ### Patch Changes
