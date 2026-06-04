@@ -27,13 +27,16 @@ jobs:
           cache: pnpm
           registry-url: https://registry.npmjs.org
 
-      # npm Trusted Publishing (OIDC) requires npm CLI >= 11.5.1; Node 22 ships
-      # an older npm, so upgrade before publishing.
-      - name: Upgrade npm for OIDC publishing
+      - name: Upgrade npm
         run: npm install -g npm@latest
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Check npm auth
+        run: npm whoami --registry https://registry.npmjs.org
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       # When changesets exist on main, this opens/updates a "Version Packages" PR.
       # When that PR is merged (versions bumped, no changesets left), it runs the
@@ -48,3 +51,4 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
