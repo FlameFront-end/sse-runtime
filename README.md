@@ -39,11 +39,12 @@ const client = createSSEClient<ChatEvents>({
 
 ## Packages
 
-| Package                                                    | Description                                           |
-| ---------------------------------------------------------- | ----------------------------------------------------- |
-| [`@flamefrontend/sse-runtime-core`](packages/core)         | Framework-agnostic SSE runtime.                       |
-| [`@flamefrontend/sse-runtime-react`](packages/react)       | `useSSE` hook built on top of core.                   |
-| [`@flamefrontend/sse-runtime-devtools`](packages/devtools) | Devtools panel to inspect connections, events, state. |
+| Package                                                            | Description                                           |
+| ------------------------------------------------------------------ | ----------------------------------------------------- |
+| [`@flamefrontend/sse-runtime-core`](packages/core)                 | Framework-agnostic SSE runtime.                       |
+| [`@flamefrontend/sse-runtime-react`](packages/react)               | `useSSE` hook built on top of core.                   |
+| [`@flamefrontend/sse-runtime-react-native`](packages/react-native) | React Native hooks and lifecycle helpers.             |
+| [`@flamefrontend/sse-runtime-devtools`](packages/devtools)         | Devtools panel to inspect connections, events, state. |
 
 ## Install
 
@@ -100,7 +101,7 @@ dynamic options fresh across renders without tearing down the connection.
 - [API Reference](docs/api-reference.md) — every option, method, and type.
 - [Recipes](docs/recipes.md) — auth refresh, resumption, multi-tab coordination.
 - [Troubleshooting](docs/troubleshooting.md) — common pitfalls and fixes.
-- Package guides: [core](packages/core/README.md) · [react](packages/react/README.md) · [devtools](packages/devtools/README.md)
+- Package guides: [core](packages/core/README.md) · [react](packages/react/README.md) · [react-native](packages/react-native/README.md) · [devtools](packages/devtools/README.md)
 
 ## Browser Support
 
