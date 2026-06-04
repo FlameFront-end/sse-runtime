@@ -22,15 +22,15 @@ export const ConnectionList = memo(function ConnectionList({
 }: ConnectionListProps) {
   if (records.length === 0) {
     return (
-      <View style={[styles.connections, { borderRightColor: palette.borderSoft }]}>
+      <View style={styles.connections}>
         <EmptyState palette={palette} text="Wrap your app with ReactNativeSSEDevtoolsProvider." />
       </View>
     );
   }
 
   return (
-    <View style={[styles.connections, { borderRightColor: palette.borderSoft }]}>
-      <ScrollView>
+    <View style={styles.connections}>
+      <ScrollView contentContainerStyle={styles.content}>
         {records.map((record) => (
           <ConnectionItem
             key={record.id}
@@ -43,48 +43,6 @@ export const ConnectionList = memo(function ConnectionList({
       </ScrollView>
     </View>
   );
-});
-
-const styles = StyleSheet.create({
-  connectionFooter: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    paddingLeft: 16
-  },
-  connectionHeader: {
-    alignItems: "center",
-    flexDirection: "row",
-    gap: 6
-  },
-  connectionItem: {
-    borderBottomWidth: 1,
-    borderLeftWidth: 2,
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 10
-  },
-  connectionMeta: {
-    fontSize: 10
-  },
-  connections: {
-    borderRightWidth: 1,
-    flexShrink: 0,
-    width: 164
-  },
-  connectionStatus: {
-    fontSize: 10,
-    fontWeight: "600"
-  },
-  connectionUrl: {
-    flex: 1,
-    fontFamily: "monospace",
-    fontSize: 11,
-    fontWeight: "600"
-  },
-  role: {
-    fontSize: 10,
-    paddingLeft: 16
-  }
 });
 
 type ConnectionItemProps = {
@@ -106,31 +64,95 @@ const ConnectionItem = memo(function ConnectionItem({
   return (
     <Pressable
       accessibilityRole="button"
+      accessibilityLabel={`Inspect SSE connection ${record.url}`}
       style={[
         styles.connectionItem,
         {
-          backgroundColor: selected ? palette.selected : palette.background,
-          borderBottomColor: palette.borderSoft,
-          borderLeftColor: selected ? palette.accent : "transparent"
+          backgroundColor: selected ? palette.selected : palette.card,
+          borderColor: selected ? palette.accent : palette.border
         }
       ]}
       onPress={select}
     >
       <View style={styles.connectionHeader}>
-        <StatusDot color={color} />
-        <Text numberOfLines={1} style={[styles.connectionUrl, { color: palette.text }]}>
-          {urlLabel(record.url)}
-        </Text>
+        <View style={styles.connectionTitle}>
+          <StatusDot color={color} />
+          <Text numberOfLines={1} style={[styles.connectionUrl, { color: palette.text }]}>
+            {urlLabel(record.url)}
+          </Text>
+        </View>
+        <Text style={[styles.inspectText, { color: palette.accent }]}>Open</Text>
       </View>
+
       <View style={styles.connectionFooter}>
         <Text style={[styles.connectionStatus, { color }]}>{statusLabel(record.status)}</Text>
         <Text style={[styles.connectionMeta, { color: palette.textMuted }]}>
           {record.totalEvents} evt
         </Text>
       </View>
-      {record.role && (
+
+      {record.role ? (
         <Text style={[styles.role, { color: palette.textMuted }]}>{record.role}</Text>
-      )}
+      ) : null}
     </Pressable>
   );
+});
+
+const styles = StyleSheet.create({
+  connectionFooter: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    paddingLeft: 18
+  },
+  connectionHeader: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 10,
+    justifyContent: "space-between"
+  },
+  connectionItem: {
+    borderRadius: 10,
+    borderWidth: 1,
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 12
+  },
+  connectionMeta: {
+    fontSize: 11
+  },
+  connections: {
+    flex: 1,
+    minHeight: 0
+  },
+  connectionStatus: {
+    fontSize: 11,
+    fontWeight: "600"
+  },
+  connectionTitle: {
+    alignItems: "center",
+    flex: 1,
+    flexDirection: "row",
+    gap: 8,
+    minWidth: 0
+  },
+  connectionUrl: {
+    flex: 1,
+    fontFamily: "monospace",
+    fontSize: 12,
+    fontWeight: "600"
+  },
+  content: {
+    gap: 10,
+    padding: 12,
+    paddingBottom: 18
+  },
+  inspectText: {
+    flexShrink: 0,
+    fontSize: 11,
+    fontWeight: "700"
+  },
+  role: {
+    fontSize: 10,
+    paddingLeft: 18
+  }
 });

@@ -9,23 +9,30 @@ import { ActionButton } from "./action-button";
 import { EmptyState } from "./empty-state";
 import { EventRow } from "./event-row";
 import { Metric } from "./metric";
+import type { ReactNativeSSEDevtoolsExportPayload } from "./sse-devtools-provider";
 import { StatusDot } from "./status-dot";
 
 type DetailPaneProps = {
   readonly clearEvents: (id: string) => void;
+  readonly onCopyPayload?: (payload: string) => void | Promise<void>;
+  readonly onExportEvents?: (payload: ReactNativeSSEDevtoolsExportPayload) => void | Promise<void>;
   readonly palette: DevtoolsPalette;
   readonly record: ReactNativeDevtoolsClientRecord;
 };
 
 export const DetailPane = memo(function DetailPane({
   clearEvents,
+  onCopyPayload,
+  onExportEvents,
   palette,
   record
 }: DetailPaneProps) {
   const [paused, setPaused] = useState(false);
   const [query, setQuery] = useState("");
   const [frozenEvents, setFrozenEvents] = useState(record.events);
+  const [notice, setNotice] = useState<string | null>(null);
   const sourceEvents = paused ? frozenEvents : record.events;
+  const bufferedWhilePaused = paused ? record.totalEvents - sourceEvents.length : 0;
 
   useEffect(() => {
     if (!paused) setFrozenEvents(record.events);
@@ -51,32 +58,46 @@ export const DetailPane = memo(function DetailPane({
     clearEvents(record.id);
   }, [clearEvents, record.id]);
   const togglePause = useCallback(() => setPaused((value) => !value), []);
+  const exportEvents = useCallback(() => {
+    const payload = createExportPayload(record);
+
+    if (!onExportEvents) {
+      setNotice("Export callback is not configured.");
+      return;
+    }
+
+    void Promise.resolve(onExportEvents(payload)).then(
+      () => setNotice("Exported events."),
+      () => setNotice("Export failed.")
+    );
+  }, [onExportEvents, record]);
 
   return (
     <View style={styles.detailShell}>
       <View style={[styles.detailHeader, { borderBottomColor: palette.borderSoft }]}>
         <View style={styles.detailTitleBlock}>
           <Text numberOfLines={1} style={[styles.detailUrl, { color: palette.text }]}>
-            {record.url}
+            {record.key}
           </Text>
           <View style={styles.detailMeta}>
             <StatusDot color={status} />
             <Text style={[styles.detailStatus, { color: status }]}>
               {statusLabel(record.status)}
             </Text>
-            <Text numberOfLines={1} style={[styles.detailKey, { color: palette.textMuted }]}>
-              key {record.key}
+            <Text style={[styles.detailKey, { color: palette.textMuted }]}>
+              {record.totalEvents} events
             </Text>
           </View>
         </View>
-        <View style={styles.actions}>
-          <ActionButton
-            label="Connect"
-            palette={palette}
-            onPress={() => void record.client.connect()}
-          />
-          <ActionButton label="Disconnect" palette={palette} onPress={record.client.disconnect} />
-        </View>
+      </View>
+
+      <View style={[styles.actions, { borderBottomColor: palette.borderSoft }]}>
+        <ActionButton
+          label="Connect"
+          palette={palette}
+          onPress={() => void record.client.connect()}
+        />
+        <ActionButton label="Disconnect" palette={palette} onPress={record.client.disconnect} />
       </View>
 
       {record.error && (
@@ -110,6 +131,15 @@ export const DetailPane = memo(function DetailPane({
       </View>
 
       <View style={[styles.eventToolbar, { borderColor: palette.borderSoft }]}>
+        <View style={styles.eventToolbarHeader}>
+          <Text style={[styles.eventToolbarTitle, { color: palette.textMuted }]}>
+            Events log
+            {record.totalEvents > sourceEvents.length
+              ? ` (last ${sourceEvents.length} of ${record.totalEvents})`
+              : ""}
+            {bufferedWhilePaused > 0 ? ` - ${bufferedWhilePaused} new while paused` : ""}
+          </Text>
+        </View>
         <TextInput
           accessibilityLabel="Filter SSE events"
           placeholder="Filter type or payload"
@@ -125,8 +155,18 @@ export const DetailPane = memo(function DetailPane({
           ]}
           onChangeText={setQuery}
         />
-        <ActionButton label={paused ? "Resume" : "Pause"} palette={palette} onPress={togglePause} />
-        <ActionButton label="Clear" palette={palette} onPress={clear} />
+        <View style={styles.eventActions}>
+          <ActionButton
+            label={paused ? "Resume" : "Pause"}
+            palette={palette}
+            onPress={togglePause}
+          />
+          <ActionButton label="Export" palette={palette} onPress={exportEvents} />
+          <ActionButton label="Clear" palette={palette} onPress={clear} />
+        </View>
+        {notice ? (
+          <Text style={[styles.notice, { color: palette.textMuted }]}>{notice}</Text>
+        ) : null}
       </View>
 
       <ScrollView style={styles.events}>
@@ -134,7 +174,13 @@ export const DetailPane = memo(function DetailPane({
           <EmptyState palette={palette} text="No events to display." />
         ) : (
           filteredEvents.map((event) => (
-            <EventRow key={event.id} event={event} palette={palette} onSelectType={setQuery} />
+            <EventRow
+              key={event.id}
+              event={event}
+              palette={palette}
+              onCopyPayload={onCopyPayload}
+              onSelectType={setQuery}
+            />
           ))
         )}
       </ScrollView>
@@ -154,23 +200,41 @@ function calculateEventsPerSecond(record: ReactNativeDevtoolsClientRecord, now: 
   return Math.round((count / (RATE_WINDOW_MS / 1000)) * 10) / 10;
 }
 
+function createExportPayload(
+  record: ReactNativeDevtoolsClientRecord
+): ReactNativeSSEDevtoolsExportPayload {
+  return {
+    url: record.url,
+    key: record.key,
+    status: record.status,
+    role: record.role,
+    totalEvents: record.totalEvents,
+    eventsInLog: record.events.length,
+    truncated: record.totalEvents > record.events.length,
+    exportedAt: new Date().toISOString(),
+    events: record.events.map((event) => ({
+      type: event.type,
+      data: event.data,
+      timestamp: new Date(event.timestamp).toISOString()
+    }))
+  };
+}
+
 const styles = StyleSheet.create({
   actions: {
-    flexDirection: "row",
-    flexShrink: 0,
-    gap: 6
-  },
-  detailHeader: {
     borderBottomWidth: 1,
     flexDirection: "row",
     gap: 8,
-    justifyContent: "space-between",
-    padding: 10
+    paddingHorizontal: 10,
+    paddingVertical: 8
+  },
+  detailHeader: {
+    borderBottomWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 10
   },
   detailKey: {
-    flex: 1,
-    fontFamily: "monospace",
-    fontSize: 10
+    fontSize: 11
   },
   detailMeta: {
     alignItems: "center",
@@ -192,7 +256,7 @@ const styles = StyleSheet.create({
   },
   detailUrl: {
     fontFamily: "monospace",
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: "700"
   },
   errorBox: {
@@ -210,12 +274,23 @@ const styles = StyleSheet.create({
     flex: 1
   },
   eventToolbar: {
-    alignItems: "center",
     borderBottomWidth: 1,
     borderTopWidth: 1,
+    gap: 8,
+    padding: 10
+  },
+  eventToolbarHeader: {
+    flexDirection: "row"
+  },
+  eventToolbarTitle: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: "600"
+  },
+  eventActions: {
     flexDirection: "row",
-    gap: 6,
-    padding: 8
+    gap: 8,
+    width: "100%"
   },
   filterInput: {
     borderRadius: 6,
@@ -223,13 +298,16 @@ const styles = StyleSheet.create({
     flex: 1,
     fontFamily: "monospace",
     fontSize: 11,
-    height: 32,
+    height: 38,
     paddingHorizontal: 8
   },
   metrics: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 6,
-    padding: 8
+    gap: 8,
+    padding: 10
+  },
+  notice: {
+    fontSize: 11
   }
 });

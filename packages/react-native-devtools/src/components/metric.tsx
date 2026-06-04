@@ -21,20 +21,22 @@ export function Metric({
 
 const styles = StyleSheet.create({
   metric: {
-    borderRadius: 7,
+    borderRadius: 9,
     borderWidth: 1,
-    minWidth: 78,
-    paddingHorizontal: 8,
-    paddingVertical: 7
+    flexBasis: "47%",
+    flexGrow: 1,
+    minHeight: 58,
+    paddingHorizontal: 10,
+    paddingVertical: 9
   },
   metricLabel: {
-    fontSize: 9,
+    fontSize: 10,
     textTransform: "uppercase"
   },
   metricValue: {
     fontFamily: "monospace",
-    fontSize: 13,
+    fontSize: 15,
     fontWeight: "700",
-    marginTop: 2
+    marginTop: 4
   }
 });

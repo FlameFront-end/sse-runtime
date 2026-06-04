@@ -1,5 +1,8 @@
 export { ReactNativeSSEDevtoolsProvider } from "./components/sse-devtools-provider";
-export type { ReactNativeSSEDevtoolsProviderProps } from "./components/sse-devtools-provider";
+export type {
+  ReactNativeSSEDevtoolsExportPayload,
+  ReactNativeSSEDevtoolsProviderProps
+} from "./components/sse-devtools-provider";
 export { ReactNativeSSEDevtoolsPanel } from "./components/sse-devtools-panel";
 export type { ReactNativeSSEDevtoolsPanelProps } from "./components/sse-devtools-panel";
 export {
