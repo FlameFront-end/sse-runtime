@@ -1,5 +1,20 @@
 # @flamefrontend/sse-runtime-devtools
 
+## 4.0.0
+
+### Minor Changes
+
+- 35e9918: Show a Leader / Follower badge for each connection. With single-tab coordination enabled, the panel now labels which tab owns the real SSE connection (leader) and which mirror it (follower), in both the connection list and the detail header. The role is also included in the exported event log JSON.
+  </content>
+
+### Patch Changes
+
+- Updated dependencies [d259be9]
+- Updated dependencies [35e9918]
+- Updated dependencies [d259be9]
+  - @flamefrontend/sse-runtime-core@0.9.0
+  - @flamefrontend/sse-runtime-react@0.6.0
+
 ## 3.0.0
 
 ### Patch Changes
