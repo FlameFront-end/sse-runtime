@@ -1,14 +1,14 @@
 {
-  "name": "@flamefrontend/sse-runtime-react-native",
+  "name": "@flamefrontend/sse-runtime-react-native-devtools",
   "version": "0.1.0",
-  "description": "React Native hooks and lifecycle helpers for @flamefrontend/sse-runtime-core.",
+  "description": "React Native developer tools panel for @flamefrontend/sse-runtime-react-native.",
   "keywords": [
     "sse",
     "server-sent-events",
+    "devtools",
+    "developer-tools",
     "react-native",
-    "hooks",
-    "streaming",
-    "typescript"
+    "debugging"
   ],
   "license": "MIT",
   "author": "FlameFront-end",
@@ -16,7 +16,7 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/FlameFront-end/sse-runtime",
-    "directory": "packages/react-native"
+    "directory": "packages/react-native-devtools"
   },
   "bugs": {
     "url": "https://github.com/FlameFront-end/sse-runtime/issues"
@@ -41,17 +41,17 @@
     "access": "public"
   },
   "peerDependencies": {
-    "react": "^18.3.0 || ^19.0.0"
-  },
-  "dependencies": {
-    "@flamefrontend/sse-runtime-core": "workspace:^"
+    "@flamefrontend/sse-runtime-core": "^0.8.0",
+    "@flamefrontend/sse-runtime-react-native": "^0.1.0",
+    "react": "^18.3.0 || ^19.0.0",
+    "react-native": ">=0.72.0"
   },
   "devDependencies": {
-    "@testing-library/dom": "^10.4.1",
-    "@testing-library/react": "^16.3.2",
+    "@flamefrontend/sse-runtime-core": "workspace:*",
+    "@flamefrontend/sse-runtime-react-native": "workspace:*",
     "@types/react": "^19.1.6",
-    "jsdom": "^29.1.1",
     "react": "^19.1.0",
+    "react-native": "^0.81.5",
     "typescript": "^5.8.3",
     "vitest": "^3.1.4"
   },

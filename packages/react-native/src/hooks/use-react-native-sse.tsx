@@ -17,6 +17,7 @@ import {
   useState
 } from "react";
 
+import { ReactNativeSSEDevtoolsRegistrationContext } from "../devtools/devtools-registration-context";
 import { createReactNativeClientOptions } from "./create-react-native-client-options";
 import { useLatestRef } from "./use-latest-ref";
 import type { UseReactNativeSSEResult } from "../types/public";
@@ -87,6 +88,17 @@ export function useReactNativeSSE<Events extends EventMap>(
       client.disconnect();
     };
   }, [client, options.enabled]);
+
+  const devtools = useContext(ReactNativeSSEDevtoolsRegistrationContext);
+
+  useEffect(() => {
+    if (!devtools) return;
+    return devtools.register({
+      id: keySignature,
+      url: options.url,
+      client
+    });
+  }, [devtools, client, keySignature, options.url]);
 
   const connect = useCallback(() => client.connect(), [client]);
   const disconnect = useCallback(() => client.disconnect(), [client]);

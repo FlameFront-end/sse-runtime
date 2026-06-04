@@ -125,6 +125,23 @@ function ConnectionConsumer() {
 NetInfo is intentionally not a peer dependency. Pass any object with a compatible
 `addEventListener(listener)` method.
 
+## DevTools
+
+React Native clients can be inspected with
+`@flamefrontend/sse-runtime-react-native-devtools`.
+
+```tsx
+import { ReactNativeSSEDevtoolsProvider } from "@flamefrontend/sse-runtime-react-native-devtools";
+
+export function App() {
+  return (
+    <ReactNativeSSEDevtoolsProvider>
+      <AppProviders />
+    </ReactNativeSSEDevtoolsProvider>
+  );
+}
+```
+
 ## License
 
 MIT
