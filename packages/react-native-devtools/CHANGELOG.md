@@ -1,5 +1,11 @@
 # @flamefrontend/sse-runtime-react-native-devtools
 
+## 1.0.3
+
+### Patch Changes
+
+- c6fda76: Remove the duplicated mobile detail status row, collapse metrics into a compact mobile summary by default, animate the React Native DevTools panel open and closed, and make the resize handle easier to drag with swipe-down close support.
+
 ## 1.0.2
 
 ### Patch Changes
