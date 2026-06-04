@@ -60,13 +60,13 @@ jobs:
           curl --fail-with-body --silent --show-error \
             --header "PRIVATE-TOKEN: ${GITLAB_TOKEN}" \
             "https://gitlab.devair.ru/api/v4/user" |
-            python -c 'import json,sys; user=json.load(sys.stdin); print(f"GitLab user: @{user.get(\"username\")} ({user.get(\"name\")})")'
+            python -c 'import json, sys; user = json.load(sys.stdin); print("GitLab user: @{} ({})".format(user.get("username"), user.get("name")))'
 
           echo "Checking GitLab project access"
           curl --fail-with-body --silent --show-error \
             --header "PRIVATE-TOKEN: ${GITLAB_TOKEN}" \
             "https://gitlab.devair.ru/api/v4/projects/air%2Fsse-runtime" |
-            python -c 'import json,sys; project=json.load(sys.stdin); permissions=project.get("permissions") or {}; project_access=permissions.get("project_access") or {}; group_access=permissions.get("group_access") or {}; print(f"GitLab project: {project.get(\"path_with_namespace\")}, default branch: {project.get(\"default_branch\")}, project access: {project_access.get(\"access_level\")}, group access: {group_access.get(\"access_level\")}")'
+            python -c 'import json, sys; project = json.load(sys.stdin); permissions = project.get("permissions") or {}; project_access = permissions.get("project_access") or {}; group_access = permissions.get("group_access") or {}; print("GitLab project: {}, default branch: {}, project access: {}, group access: {}".format(project.get("path_with_namespace"), project.get("default_branch"), project_access.get("access_level"), group_access.get("access_level")))'
 
           git -c credential.helper= push --no-verify "$GITLAB_URL" \
             refs/remotes/origin/main:refs/heads/develop
