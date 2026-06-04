@@ -1,5 +1,11 @@
 # @flamefrontend/sse-runtime-react-native-devtools
 
+## 1.0.1
+
+### Patch Changes
+
+- ae8413e: Split React Native DevTools panel UI into focused component files with colocated styles.
+
 ## 1.0.0
 
 ### Minor Changes
