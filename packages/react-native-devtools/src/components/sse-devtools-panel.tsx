@@ -57,18 +57,19 @@ export const ReactNativeSSEDevtoolsPanel = memo(function ReactNativeSSEDevtoolsP
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [isDetailVisible, setIsDetailVisible] = useState(false);
   const [isPanelMounted, setIsPanelMounted] = useState(isOpen);
-  const initialPanelHeight = clampPanelHeight(panelHeight, MIN_PANEL_HEIGHT, maxPanelHeight);
+  const [height, setHeight] = useState(() =>
+    clampPanelHeight(panelHeight, MIN_PANEL_HEIGHT, maxPanelHeight)
+  );
   const animationProgress = useRef(new Animated.Value(isOpen ? 1 : 0)).current;
-  const panelHeightValue = useRef(new Animated.Value(initialPanelHeight)).current;
   const dragTranslateY = useRef(new Animated.Value(0)).current;
-  const currentHeight = useRef(initialPanelHeight);
-  const dragStartHeight = useRef(initialPanelHeight);
+  const currentHeight = useRef(height);
+  const dragStartHeight = useRef(height);
 
   useEffect(() => {
     const clampedHeight = clampPanelHeight(currentHeight.current, MIN_PANEL_HEIGHT, maxPanelHeight);
     currentHeight.current = clampedHeight;
-    panelHeightValue.setValue(clampedHeight);
-  }, [maxPanelHeight, panelHeightValue]);
+    setHeight(clampedHeight);
+  }, [maxPanelHeight]);
 
   const panResponder = useMemo(
     () =>
@@ -89,12 +90,12 @@ export const ReactNativeSSEDevtoolsPanel = memo(function ReactNativeSSEDevtoolsP
           if (gesture.dy <= 0 || nextHeight > MIN_PANEL_HEIGHT) {
             dragTranslateY.setValue(0);
             currentHeight.current = nextHeight;
-            panelHeightValue.setValue(nextHeight);
+            setHeight(nextHeight);
             return;
           }
 
           currentHeight.current = MIN_PANEL_HEIGHT;
-          panelHeightValue.setValue(MIN_PANEL_HEIGHT);
+          setHeight(MIN_PANEL_HEIGHT);
           dragTranslateY.setValue(gesture.dy - (dragStartHeight.current - MIN_PANEL_HEIGHT));
         },
         onPanResponderRelease: (_event, gesture) => {
@@ -119,7 +120,7 @@ export const ReactNativeSSEDevtoolsPanel = memo(function ReactNativeSSEDevtoolsP
           }).start();
         }
       }),
-    [dragTranslateY, maxPanelHeight, onToggle, panelHeightValue]
+    [dragTranslateY, maxPanelHeight, onToggle]
   );
 
   useEffect(() => {
@@ -182,7 +183,7 @@ export const ReactNativeSSEDevtoolsPanel = memo(function ReactNativeSSEDevtoolsP
 
   const panelTranslateY = animationProgress.interpolate({
     inputRange: [0, 1],
-    outputRange: [maxPanelHeight + 24, 0]
+    outputRange: [height + 24, 0]
   });
   const panelCombinedTranslateY = Animated.add(panelTranslateY, dragTranslateY);
 
@@ -204,7 +205,7 @@ export const ReactNativeSSEDevtoolsPanel = memo(function ReactNativeSSEDevtoolsP
           {
             backgroundColor: palette.background,
             borderColor: palette.border,
-            height: panelHeightValue,
+            height,
             transform: [{ translateY: panelCombinedTranslateY }]
           }
         ]}
