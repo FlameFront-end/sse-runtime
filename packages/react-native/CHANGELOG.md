@@ -1,5 +1,12 @@
 # @flamefrontend/sse-runtime-react-native
 
+## 0.3.2
+
+### Patch Changes
+
+- Updated dependencies [13b8229]
+  - @flamefrontend/sse-runtime-core@0.10.0
+
 ## 0.3.1
 
 ### Patch Changes

@@ -1,6 +1,6 @@
 {
   "name": "@flamefrontend/sse-runtime-devtools",
-  "version": "5.0.1",
+  "version": "6.0.0",
   "description": "Developer tools panel for @flamefrontend/sse-runtime-react — inspect active SSE connections, event logs, and connection status.",
   "keywords": [
     "sse",
