@@ -8,6 +8,7 @@ export type ReadSSEStreamOptions = {
   readonly signal: AbortSignal;
   readonly createTextDecoder: () => TextDecoder;
   readonly onEvents: (events: readonly ParsedSSEEvent[]) => Promise<void>;
+  readonly onActivity?: (timestamp: number) => void;
   readonly heartbeatTimeout?: number;
 };
 
@@ -54,6 +55,7 @@ export async function readSSEStream(options: ReadSSEStreamOptions): Promise<SSEE
       }
 
       clearTimeout(heartbeatTimer);
+      options.onActivity?.(Date.now());
       await options.onEvents(parser.parse(textDecoder.decode(chunk.value, { stream: true })));
       resetHeartbeat();
     }

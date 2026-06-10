@@ -12,13 +12,19 @@ export type {
   SSEAnyEventHandler,
   SSEEventEnvelope,
   HeartbeatOptions,
+  EnsureHealthyOptions,
+  ReconnectRequestOptions,
   ReconnectOptions,
   RetryContext,
   RetryPolicyOptions,
+  SSEActivityListener,
   SSEClientOptions,
   SSEConnectionStatus,
   SSEError,
   SSEErrorListener,
+  SSERecoveryEvent,
+  SSERecoveryListener,
+  SSERecoveryPhase,
   SSEStatusListener
 } from "./types/public";
 

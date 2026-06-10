@@ -106,7 +106,9 @@ export function createDevtoolsRegistry(options: { maxEvents?: number } = {}): De
         connectedAt: alreadyOpen ? now : null,
         firstConnectedAt: alreadyOpen ? now : null,
         reconnectCount: 0,
+        lastActivityAt: client.getLastActivityAt() ?? null,
         lastEventAt: null,
+        lastRecovery: client.getLastRecovery() ?? null,
         client
       });
       invalidate();
@@ -136,6 +138,14 @@ export function createDevtoolsRegistry(options: { maxEvents?: number } = {}): De
         patch(id, { role });
       });
 
+      const unsubActivity = client.subscribeActivity((timestamp) => {
+        patch(id, { lastActivityAt: timestamp });
+      });
+
+      const unsubRecovery = client.subscribeRecovery((recovery) => {
+        patch(id, { lastRecovery: recovery });
+      });
+
       const unsubEvents = client.subscribeAnyEvent((event) => {
         const current = clients.get(id);
         if (!current) return;
@@ -161,6 +171,8 @@ export function createDevtoolsRegistry(options: { maxEvents?: number } = {}): De
         unsubStatus();
         unsubError();
         unsubRole?.();
+        unsubActivity();
+        unsubRecovery();
         unsubEvents();
         clients.delete(id);
         invalidate();

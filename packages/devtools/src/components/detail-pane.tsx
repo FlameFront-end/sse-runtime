@@ -11,12 +11,14 @@ import { StatusDot } from "./status-dot";
 type DetailPaneProps = {
   readonly record: DevtoolsClientRecord;
   readonly isCompact: boolean;
+  readonly silentTimeoutMs: number;
   readonly onClear: () => void;
 };
 
 export const DetailPane = memo(function DetailPane({
   record,
   isCompact,
+  silentTimeoutMs,
   onClear
 }: DetailPaneProps) {
   const listRef = useRef<HTMLDivElement>(null);
@@ -75,6 +77,10 @@ export const DetailPane = memo(function DetailPane({
     for (const t of record.recentEventTimestamps) if (t >= since) count += 1;
     return Math.round((count / (RATE_WINDOW_MS / 1000)) * 10) / 10;
   }, [record.recentEventTimestamps, record.lastEventAt, now]);
+  const isSilentOpen =
+    record.status === "open" &&
+    record.lastActivityAt !== null &&
+    now - record.lastActivityAt > silentTimeoutMs;
 
   const metrics: ReadonlyArray<readonly [string, string | number, number?]> = [
     ["Events received", record.totalEvents],
@@ -82,6 +88,7 @@ export const DetailPane = memo(function DetailPane({
     ["Uptime", record.connectedAt ? fmtDuration(record.connectedAt, now) : "—"],
     ["Reconnects", record.reconnectCount],
     ["In log", sourceEvents.length],
+    ["Last activity", record.lastActivityAt ? fmtAgo(record.lastActivityAt, now) : "—", 108],
     ["Last event", record.lastEventAt ? fmtAgo(record.lastEventAt, now) : "—", 108]
   ];
 
@@ -148,6 +155,14 @@ export const DetailPane = memo(function DetailPane({
             Connect
           </Btn>
           <Btn
+            onClick={() =>
+              void record.client.reconnect({ reason: "devtools" }).catch(() => undefined)
+            }
+            style={{ flex: isCompact ? 1 : undefined, height: isCompact ? 30 : undefined }}
+          >
+            Reconnect
+          </Btn>
+          <Btn
             onClick={() => record.client.disconnect()}
             style={{ flex: isCompact ? 1 : undefined, height: isCompact ? 30 : undefined }}
           >
@@ -171,6 +186,37 @@ export const DetailPane = memo(function DetailPane({
             {record.error.kind}: {record.error.message}
             {record.error.status != null && ` (HTTP ${record.error.status})`}
           </span>
+        </div>
+      )}
+
+      {isSilentOpen && (
+        <div
+          style={{
+            margin: "10px 16px 0",
+            padding: "8px 10px",
+            background: C.errorBg,
+            borderRadius: 6,
+            border: `1px solid ${C.error}40`,
+            flexShrink: 0
+          }}
+        >
+          <span style={{ color: C.error, fontSize: 11, ...S.mono }}>
+            Open / silent for {fmtDuration(record.lastActivityAt ?? now, now)}
+          </span>
+        </div>
+      )}
+
+      {record.lastRecovery && (
+        <div
+          style={{
+            margin: "10px 16px 0",
+            color: C.textMuted,
+            fontSize: 11,
+            ...S.mono
+          }}
+        >
+          Recovery: {record.lastRecovery.phase} ({record.lastRecovery.reason}){" "}
+          {fmtAgo(record.lastRecovery.timestamp, now)}
         </div>
       )}
 
@@ -331,6 +377,9 @@ function exportEvents(record: DevtoolsClientRecord): void {
     key: record.key,
     status: record.status,
     role: record.role,
+    lastActivityAt:
+      record.lastActivityAt === null ? null : new Date(record.lastActivityAt).toISOString(),
+    lastRecovery: record.lastRecovery,
     totalEvents: record.totalEvents,
     eventsInLog: record.events.length,
     truncated: record.totalEvents > record.events.length,

@@ -5,7 +5,8 @@ import type {
   CoordinationRole,
   SSEAnyEventHandler,
   SSEConnectionStatus,
-  SSEError
+  SSEError,
+  SSERecoveryEvent
 } from "@flamefrontend/sse-runtime-core";
 
 // ─── Mock client factory ─────────────────────────────────────────────────────
@@ -13,20 +14,28 @@ import type {
 type StatusListener = (s: SSEConnectionStatus) => void;
 type ErrorListener = (e: SSEError | null) => void;
 type RoleListener = (role: CoordinationRole | null) => void;
+type ActivityListener = (timestamp: number) => void;
+type RecoveryListener = (event: SSERecoveryEvent) => void;
 
 function createMockClient(initialStatus: SSEConnectionStatus = "closed") {
   let status: SSEConnectionStatus = initialStatus;
   let error: SSEError | null = null;
   let role: CoordinationRole | null = null;
+  let lastActivityAt: number | undefined;
+  let lastRecovery: SSERecoveryEvent | undefined;
   const statusListeners = new Set<StatusListener>();
   const errorListeners = new Set<ErrorListener>();
   const roleListeners = new Set<RoleListener>();
+  const activityListeners = new Set<ActivityListener>();
+  const recoveryListeners = new Set<RecoveryListener>();
   const anyEventHandlers = new Set<SSEAnyEventHandler>();
 
   return {
     getStatus: () => status,
     getError: () => error,
+    getLastActivityAt: () => lastActivityAt,
     getLastEventAt: () => undefined,
+    getLastRecovery: () => lastRecovery,
     getRole: () => role,
     subscribeRole: vi.fn((listener: RoleListener) => {
       roleListeners.add(listener);
@@ -37,6 +46,17 @@ function createMockClient(initialStatus: SSEConnectionStatus = "closed") {
     disconnect: vi.fn(),
     reconnect: vi.fn(async () => undefined),
     ensureOpen: vi.fn(async () => true),
+    ensureHealthy: vi.fn(async () => true),
+    subscribeActivity: vi.fn((listener: ActivityListener) => {
+      activityListeners.add(listener);
+      if (lastActivityAt !== undefined) listener(lastActivityAt);
+      return () => activityListeners.delete(listener);
+    }),
+    subscribeRecovery: vi.fn((listener: RecoveryListener) => {
+      recoveryListeners.add(listener);
+      if (lastRecovery !== undefined) listener(lastRecovery);
+      return () => recoveryListeners.delete(listener);
+    }),
     subscribeEvent: vi.fn(() => () => undefined),
     subscribeAnyEvent: vi.fn((handler: SSEAnyEventHandler) => {
       anyEventHandlers.add(handler);
@@ -66,6 +86,14 @@ function createMockClient(initialStatus: SSEConnectionStatus = "closed") {
       if (role === next) return;
       role = next;
       for (const l of roleListeners) l(role);
+    },
+    _emitActivity(timestamp: number) {
+      lastActivityAt = timestamp;
+      for (const listener of activityListeners) listener(timestamp);
+    },
+    _emitRecovery(event: SSERecoveryEvent) {
+      lastRecovery = event;
+      for (const listener of recoveryListeners) listener(event);
     },
     _emitEvent(type: string, data: unknown) {
       const raw = typeof data === "string" ? data : JSON.stringify(data);
@@ -123,6 +151,24 @@ describe("createDevtoolsRegistry", () => {
     client._setRole("leader");
     vi.runAllTimers();
     expect(roleOf()).toBe("leader");
+  });
+
+  it("tracks transport activity and recovery lifecycle", () => {
+    const registry = createDevtoolsRegistry();
+    const client = createMockClient("open");
+
+    registry.register({ id: "key-1", url: "/events", client });
+    client._emitActivity(1_000);
+    client._emitRecovery({ phase: "started", reason: "stale-watchdog", timestamp: 2_000 });
+    vi.runAllTimers();
+
+    const [record] = [...registry.getSnapshot().values()];
+    expect(record.lastActivityAt).toBe(1_000);
+    expect(record.lastRecovery).toEqual({
+      phase: "started",
+      reason: "stale-watchdog",
+      timestamp: 2_000
+    });
   });
 
   it("generates unique instance ids so two clients with the same key coexist", async () => {

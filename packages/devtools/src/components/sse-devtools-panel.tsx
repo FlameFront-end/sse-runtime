@@ -30,6 +30,7 @@ export type SSEDevtoolsPanelProps = {
   readonly buttonPosition: "bottom-left" | "bottom-right";
   readonly panelHeight: number;
   readonly hideToggleButton: boolean;
+  readonly silentTimeoutMs: number;
   readonly zIndex: number;
 };
 
@@ -41,6 +42,7 @@ export function SSEDevtoolsPanel({
   buttonPosition,
   panelHeight,
   hideToggleButton,
+  silentTimeoutMs,
   zIndex
 }: SSEDevtoolsPanelProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -276,6 +278,7 @@ export function SSEDevtoolsPanel({
                   key={selectedRecord.id}
                   isCompact={isCompact}
                   record={selectedRecord}
+                  silentTimeoutMs={silentTimeoutMs}
                   onClear={clearSelectedEvents}
                 />
               ) : (

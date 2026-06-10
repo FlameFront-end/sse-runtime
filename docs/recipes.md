@@ -239,7 +239,8 @@ All tabs with the same `key` share one connection. The first tab to call `connec
 
 ### Waiting for connection readiness
 
-Use `ensureOpen` when you need the stream to be active before performing an action (e.g. sending a command that the server processes over the stream):
+Use `ensureOpen` when you need the stream status to be open before performing an
+action:
 
 ```ts
 const client = createSSEClient({ key: ["chat"], url: "/stream" });
@@ -253,6 +254,25 @@ async function sendCommand(payload: unknown) {
 ```
 
 `ensureOpen` is idempotent — calling it while already open resolves immediately. Multiple concurrent callers all share the same wait and receive the same result.
+
+Use `ensureHealthy` when the action's response will arrive over SSE and an `open`
+but stale transport would lose the response events:
+
+```ts
+async function sendChatMessage(payload: unknown) {
+  const isHealthy = await client.ensureHealthy({
+    staleAfter: 120_000,
+    timeout: 30_000,
+    reason: "before-message-send"
+  });
+  if (!isHealthy) throw new Error("SSE connection could not be recovered");
+  await fetch("/api/chat/messages", { method: "POST", body: JSON.stringify(payload) });
+}
+```
+
+`ensureHealthy` uses byte-level transport activity, so heartbeat comments count as
+activity. With single-tab coordination, a follower requests reconnect from the leader
+and waits for acknowledgement.
 
 ### Open timeout
 
@@ -321,7 +341,8 @@ const client = createSSEClient({ key: ["chat"], url: "/stream" });
 await client.connect();
 
 const detach = attachLifecycleResume(client, {
-  staleTimeoutMs: 120_000, // no event for 2 min while "open" → reconnect
+  strategy: "reconnect", // force recovery of an open but silent stream
+  staleTimeoutMs: 120_000, // no bytes for 2 min while "open" → reconnect
   wakeDriftMs: 60_000, // watchdog tick this late → device woke, force reconnect
   minHiddenMs: 15_000 // ignore the visible trigger after a quick tab switch
 });
@@ -329,7 +350,11 @@ const detach = attachLifecycleResume(client, {
 // later: detach();
 ```
 
-Staleness is measured against `client.getLastEventAt()` by default. If you aggregate events elsewhere (e.g. across several clients), point `getLastActivityAt` at your own source. The watchdog only runs when `staleTimeoutMs` or `wakeDriftMs` is set; with neither, the helper just reacts to lifecycle events as before.
+Staleness is measured against `client.getLastActivityAt()` by default. This timestamp
+updates when the transport opens and on every received chunk, including comment
+heartbeats. If you aggregate activity elsewhere, point `getLastActivityAt` at your own
+source. The watchdog only runs when `staleTimeoutMs` or `wakeDriftMs` is set; with
+neither, the helper just reacts to lifecycle events as before.
 
 ### Diagnostics / observability
 

@@ -36,7 +36,7 @@ export function attachLifecycleResume<Events extends EventMap>(
   const strategy = options.strategy ?? "ensure";
   const throttleMs = options.throttleMs ?? DEFAULT_THROTTLE_MS;
   const { staleTimeoutMs, wakeDriftMs, minHiddenMs } = options;
-  const getLastActivityAt = options.getLastActivityAt ?? client.getLastEventAt;
+  const getLastActivityAt = options.getLastActivityAt ?? client.getLastActivityAt;
 
   let lastRunAt = 0;
   let hiddenAt: number | null = null;
@@ -55,7 +55,7 @@ export function attachLifecycleResume<Events extends EventMap>(
     return Date.now() - lastActivity > staleTimeoutMs;
   };
 
-  const resume = (force: boolean): void => {
+  const resume = (force: boolean, reason: string): void => {
     if (!force && staleTimeoutMs !== undefined && client.getStatus() === "open" && !isStale()) {
       return;
     }
@@ -67,7 +67,7 @@ export function attachLifecycleResume<Events extends EventMap>(
     lastRunAt = now;
 
     if (strategy === "reconnect") {
-      void client.reconnect();
+      void client.reconnect({ reason });
     } else {
       void client.ensureOpen();
     }
@@ -76,19 +76,19 @@ export function attachLifecycleResume<Events extends EventMap>(
   const cleanups: Array<() => void> = [];
 
   if (triggers.includes("focus")) {
-    const onFocus = (): void => resume(false);
+    const onFocus = (): void => resume(false, "focus");
     window.addEventListener("focus", onFocus);
     cleanups.push(() => window.removeEventListener("focus", onFocus));
   }
 
   if (triggers.includes("online")) {
-    const onOnline = (): void => resume(true);
+    const onOnline = (): void => resume(true, "online");
     window.addEventListener("online", onOnline);
     cleanups.push(() => window.removeEventListener("online", onOnline));
   }
 
   if (triggers.includes("pageshow")) {
-    const onPageShow = (): void => resume(false);
+    const onPageShow = (): void => resume(false, "pageshow");
     window.addEventListener("pageshow", onPageShow);
     cleanups.push(() => window.removeEventListener("pageshow", onPageShow));
   }
@@ -111,7 +111,7 @@ export function attachLifecycleResume<Events extends EventMap>(
         return;
       }
 
-      resume(true);
+      resume(true, "visible");
     };
     document.addEventListener("visibilitychange", onVisibilityChange);
     cleanups.push(() => document.removeEventListener("visibilitychange", onVisibilityChange));
@@ -130,12 +130,12 @@ export function attachLifecycleResume<Events extends EventMap>(
       lastTickAt = now;
 
       if (wakeDriftMs !== undefined && drift > wakeDriftMs) {
-        resume(true);
+        resume(true, "wake-drift");
         return;
       }
 
       if (isStale()) {
-        resume(true);
+        resume(true, "stale-watchdog");
       }
     }, checkInterval);
     cleanups.push(() => window.clearInterval(intervalId));

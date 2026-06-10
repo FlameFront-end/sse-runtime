@@ -1,6 +1,8 @@
 import type {
   CoordinationRole,
+  EnsureHealthyOptions,
   EventMap,
+  ReconnectRequestOptions,
   SSEClient,
   SSEConnectionStatus,
   SSEError
@@ -12,8 +14,9 @@ export type UseSSEResult<Events extends EventMap = EventMap> = {
   readonly role: CoordinationRole | null;
   readonly connect: () => Promise<void>;
   readonly disconnect: () => void;
-  readonly reconnect: () => Promise<void>;
+  readonly reconnect: (options?: ReconnectRequestOptions) => Promise<void>;
   readonly ensureOpen: (options?: { readonly timeout?: number }) => Promise<boolean>;
+  readonly ensureHealthy: (options: EnsureHealthyOptions) => Promise<boolean>;
   readonly client: SSEClient<Events>;
 };
 

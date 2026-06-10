@@ -1,7 +1,8 @@
 import type {
   CoordinationRole,
   SSEConnectionStatus,
-  SSEError
+  SSEError,
+  SSERecoveryEvent
 } from "@flamefrontend/sse-runtime-core";
 import type { SSEDevtoolsClientInfo } from "@flamefrontend/sse-runtime-react";
 
@@ -25,7 +26,9 @@ export type DevtoolsClientRecord = {
   readonly connectedAt: number | null;
   readonly firstConnectedAt: number | null;
   readonly reconnectCount: number;
+  readonly lastActivityAt: number | null;
   readonly lastEventAt: number | null;
+  readonly lastRecovery: SSERecoveryEvent | null;
   readonly client: SSEDevtoolsClientInfo["client"];
 };
 

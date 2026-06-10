@@ -26,6 +26,11 @@ import type {
   SSEConnectionStatus,
   SSEError,
   SSEErrorListener,
+  EnsureHealthyOptions,
+  ReconnectRequestOptions,
+  SSEActivityListener,
+  SSERecoveryEvent,
+  SSERecoveryListener,
   SSEStatusListener
 } from "../types/public";
 import { buildEnsureOpen } from "./build-ensure-open";
@@ -33,14 +38,19 @@ import { buildEnsureOpen } from "./build-ensure-open";
 export type SSEClient<Events extends EventMap = EventMap> = {
   readonly connect: () => Promise<void>;
   readonly disconnect: () => void;
-  readonly reconnect: () => Promise<void>;
+  readonly reconnect: (options?: ReconnectRequestOptions) => Promise<void>;
   readonly ensureOpen: (options?: { readonly timeout?: number }) => Promise<boolean>;
+  readonly ensureHealthy: (options: EnsureHealthyOptions) => Promise<boolean>;
   readonly getError: () => SSEError | null;
   readonly getStatus: () => SSEConnectionStatus;
+  readonly getLastActivityAt: () => number | undefined;
   readonly getLastEventAt: () => number | undefined;
+  readonly getLastRecovery: () => SSERecoveryEvent | undefined;
   readonly getRole?: () => CoordinationRole | null;
   readonly subscribeRole?: (listener: (role: CoordinationRole | null) => void) => () => void;
+  readonly subscribeActivity: (listener: SSEActivityListener) => () => void;
   readonly subscribeError: (listener: SSEErrorListener) => () => void;
+  readonly subscribeRecovery: (listener: SSERecoveryListener) => () => void;
   readonly subscribeStatus: (listener: SSEStatusListener) => () => void;
   readonly subscribeEvent: <EventName extends keyof Events>(
     eventName: EventName,
@@ -86,8 +96,13 @@ export function createLocalSSEClient<Events extends EventMap>(
   let authRefreshAttempt = 0;
   let generation = 0;
   let lastEventId: string | undefined = dependencies.initialLastEventId;
+  let lastActivityAt: number | undefined;
   let lastEventAt: number | undefined;
+  let lastRecovery: SSERecoveryEvent | undefined;
+  let pendingRecoveryReason: string | undefined;
   let serverRetryDelay: number | undefined;
+  const activityListeners = new Set<SSEActivityListener>();
+  const recoveryListeners = new Set<SSERecoveryListener>();
 
   const theClient: SSEClient<Events> = {
     async connect(): Promise<void> {
@@ -119,6 +134,7 @@ export function createLocalSSEClient<Events extends EventMap>(
 
     disconnect(): void {
       hasManualDisconnect = true;
+      pendingRecoveryReason = undefined;
       generation += 1;
       abortController?.abort();
       abortController = null;
@@ -129,7 +145,10 @@ export function createLocalSSEClient<Events extends EventMap>(
       });
     },
 
-    async reconnect(): Promise<void> {
+    async reconnect(options?: ReconnectRequestOptions): Promise<void> {
+      pendingRecoveryReason = options?.reason ?? "manual";
+      emitRecovery("requested", pendingRecoveryReason);
+      emitRecovery("started", pendingRecoveryReason);
       hasManualDisconnect = false;
       reconnectAttempt = 0;
       authRefreshAttempt = 0;
@@ -151,6 +170,21 @@ export function createLocalSSEClient<Events extends EventMap>(
     },
 
     ensureOpen: buildEnsureOpen(state, () => void theClient.connect()),
+    async ensureHealthy(options: EnsureHealthyOptions): Promise<boolean> {
+      const activityAt = lastActivityAt;
+      const isFresh =
+        state.getStatus() === "open" &&
+        activityAt !== undefined &&
+        Date.now() - activityAt <= options.staleAfter;
+
+      if (isFresh) {
+        return true;
+      }
+
+      await theClient.reconnect({ reason: options.reason ?? "health-check" });
+
+      return theClient.ensureOpen({ timeout: options.timeout });
+    },
 
     subscribeEvent<EventName extends keyof Events>(
       eventName: EventName,
@@ -182,8 +216,28 @@ export function createLocalSSEClient<Events extends EventMap>(
 
     getError: state.getError,
     getStatus: state.getStatus,
+    getLastActivityAt: () => lastActivityAt,
     getLastEventAt: () => lastEventAt,
+    getLastRecovery: () => lastRecovery,
+    subscribeActivity(listener: SSEActivityListener): () => void {
+      activityListeners.add(listener);
+      if (lastActivityAt !== undefined) {
+        listener(lastActivityAt);
+      }
+      return () => {
+        activityListeners.delete(listener);
+      };
+    },
     subscribeError: state.subscribeError,
+    subscribeRecovery(listener: SSERecoveryListener): () => void {
+      recoveryListeners.add(listener);
+      if (lastRecovery !== undefined) {
+        listener(lastRecovery);
+      }
+      return () => {
+        recoveryListeners.delete(listener);
+      };
+    },
     subscribeStatus: state.subscribeStatus
   };
 
@@ -253,6 +307,8 @@ export function createLocalSSEClient<Events extends EventMap>(
       authRefreshAttempt = 0;
       state.resetError();
       state.setStatus("open");
+      markActivity();
+      completeRecovery("succeeded");
       callDiagnostic(options.diagnostics?.onOpen, { url: options.url });
       startStreamReader(response.body, controller, currentGeneration);
     } catch (cause) {
@@ -294,6 +350,7 @@ export function createLocalSSEClient<Events extends EventMap>(
       signal: controller.signal,
       createTextDecoder,
       onEvents: (events) => dispatchEvents(events),
+      onActivity: markActivity,
       heartbeatTimeout: options.heartbeat?.timeout
     });
 
@@ -411,6 +468,7 @@ export function createLocalSSEClient<Events extends EventMap>(
       reason: source === "stream" ? "stream-ended" : "error"
     });
     state.setStatus("error");
+    completeRecovery("failed");
   }
 
   function shouldRetry(error: SSEError): boolean {
@@ -482,6 +540,39 @@ export function createLocalSSEClient<Events extends EventMap>(
     }
   }
 
+  function markActivity(timestamp: number = Date.now()): void {
+    lastActivityAt = timestamp;
+    for (const listener of activityListeners) {
+      try {
+        listener(timestamp);
+      } catch {
+        // activity listener errors must not affect the stream
+      }
+    }
+  }
+
+  function emitRecovery(phase: SSERecoveryEvent["phase"], reason: string): void {
+    const event: SSERecoveryEvent = { phase, reason, timestamp: Date.now() };
+    lastRecovery = event;
+    for (const listener of recoveryListeners) {
+      try {
+        listener(event);
+      } catch {
+        // recovery listener errors must not affect the stream
+      }
+    }
+  }
+
+  function completeRecovery(phase: "succeeded" | "failed"): void {
+    if (pendingRecoveryReason === undefined) {
+      return;
+    }
+
+    const reason = pendingRecoveryReason;
+    pendingRecoveryReason = undefined;
+    emitRecovery(phase, reason);
+  }
+
   async function refreshAuthAndReconnect(currentGeneration: number): Promise<void> {
     if (!isExpectedGeneration(currentGeneration)) {
       return;
@@ -489,6 +580,7 @@ export function createLocalSSEClient<Events extends EventMap>(
 
     if (authRefreshAttempt > 0) {
       state.setStatus("error");
+      completeRecovery("failed");
       return;
     }
 
@@ -502,6 +594,7 @@ export function createLocalSSEClient<Events extends EventMap>(
 
       if (!shouldRetryAfterRefresh) {
         state.setStatus("error");
+        completeRecovery("failed");
         return;
       }
 
@@ -517,6 +610,7 @@ export function createLocalSSEClient<Events extends EventMap>(
 
       state.setError(normalizeError(cause, "auth"));
       state.setStatus("error");
+      completeRecovery("failed");
     }
   }
 

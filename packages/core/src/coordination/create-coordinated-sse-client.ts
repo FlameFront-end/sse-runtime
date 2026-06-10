@@ -14,9 +14,14 @@ import type {
   DisconnectDiagnosticInfo,
   EventHandler,
   EventMap,
+  EnsureHealthyOptions,
+  ReconnectRequestOptions,
+  SSEActivityListener,
   SSEAnyEventHandler,
   SSEClientOptions,
-  SSEError
+  SSEError,
+  SSERecoveryEvent,
+  SSERecoveryListener
 } from "../types/public";
 import type { CoordinationBackend, CoordinationChannel } from "./coordination-backend";
 import type { CoordinationDiagnostic, CoordinationMessage } from "./coordination-message";
@@ -54,10 +59,20 @@ export function createCoordinatedSSEClient<Events extends EventMap>(
   let isActive = false;
   let followerChain: Promise<void> = Promise.resolve();
   let followerGeneration = 0;
+  let reconnectRequestCounter = 0;
+  let reconnectPromise: Promise<void> | null = null;
   let lastEventId: string | undefined;
+  let lastActivityAt: number | undefined;
   let lastEventAt: number | undefined;
+  let lastRecovery: SSERecoveryEvent | undefined;
   let role: CoordinationRole | null = null;
   const roleListeners = new Set<(role: CoordinationRole | null) => void>();
+  const activityListeners = new Set<SSEActivityListener>();
+  const recoveryListeners = new Set<SSERecoveryListener>();
+  const reconnectResolvers = new Map<
+    string,
+    { readonly resolve: () => void; readonly reject: (error: Error) => void }
+  >();
 
   function setRole(next: CoordinationRole | null): void {
     if (role === next) {
@@ -79,6 +94,24 @@ export function createCoordinatedSSEClient<Events extends EventMap>(
     reconnect,
 
     ensureOpen: buildEnsureOpen(state, () => void connect()),
+    async ensureHealthy(healthOptions: EnsureHealthyOptions): Promise<boolean> {
+      const activityAt = lastActivityAt;
+      const isFresh =
+        state.getStatus() === "open" &&
+        activityAt !== undefined &&
+        Date.now() - activityAt <= healthOptions.staleAfter;
+
+      if (isFresh) {
+        return true;
+      }
+
+      await reconnect({
+        reason: healthOptions.reason ?? "health-check",
+        timeout: healthOptions.timeout
+      });
+
+      return buildEnsureOpen(state, () => void connect())({ timeout: healthOptions.timeout });
+    },
 
     subscribeEvent<EventName extends keyof Events>(
       eventName: EventName,
@@ -110,7 +143,9 @@ export function createCoordinatedSSEClient<Events extends EventMap>(
 
     getError: state.getError,
     getStatus: state.getStatus,
+    getLastActivityAt: () => lastActivityAt,
     getLastEventAt: () => lastEventAt,
+    getLastRecovery: () => lastRecovery,
     getRole: () => role,
     subscribeRole(listener: (role: CoordinationRole | null) => void): () => void {
       roleListeners.add(listener);
@@ -119,7 +154,25 @@ export function createCoordinatedSSEClient<Events extends EventMap>(
         roleListeners.delete(listener);
       };
     },
+    subscribeActivity(listener: SSEActivityListener): () => void {
+      activityListeners.add(listener);
+      if (lastActivityAt !== undefined) {
+        listener(lastActivityAt);
+      }
+      return () => {
+        activityListeners.delete(listener);
+      };
+    },
     subscribeError: state.subscribeError,
+    subscribeRecovery(listener: SSERecoveryListener): () => void {
+      recoveryListeners.add(listener);
+      if (lastRecovery !== undefined) {
+        listener(lastRecovery);
+      }
+      return () => {
+        recoveryListeners.delete(listener);
+      };
+    },
     subscribeStatus: state.subscribeStatus
   };
 
@@ -154,15 +207,23 @@ export function createCoordinatedSSEClient<Events extends EventMap>(
       });
   }
 
-  async function reconnect(): Promise<void> {
-    if (engine) {
-      await engine.reconnect();
-
-      return;
+  async function reconnect(reconnectOptions?: ReconnectRequestOptions): Promise<void> {
+    if (reconnectPromise) {
+      return reconnectPromise;
     }
 
-    if (!isActive) {
-      await connect();
+    const reason = reconnectOptions?.reason ?? "manual";
+    if (!engine) {
+      emitRecovery({ phase: "requested", reason, timestamp: Date.now() });
+    }
+    reconnectPromise = engine
+      ? reconnectLeader(reason)
+      : requestLeaderReconnect(reason, reconnectOptions?.timeout);
+
+    try {
+      await reconnectPromise;
+    } finally {
+      reconnectPromise = null;
     }
   }
 
@@ -177,6 +238,10 @@ export function createCoordinatedSSEClient<Events extends EventMap>(
     unsubscribeChannel = null;
     channel?.close();
     channel = null;
+    for (const resolver of reconnectResolvers.values()) {
+      resolver.reject(new Error("SSE reconnect request cancelled"));
+    }
+    reconnectResolvers.clear();
     state.setStatus("closed");
     callDiagnostic(options.diagnostics?.onDisconnect, {
       url: options.url,
@@ -249,6 +314,18 @@ export function createCoordinatedSSEClient<Events extends EventMap>(
         channel?.post({ type: "error", error: serializeError(error) });
       })
     );
+    engineSubscriptions.push(
+      leaderEngine.subscribeActivity((timestamp) => {
+        emitActivity(timestamp);
+        channel?.post({ type: "activity", timestamp });
+      })
+    );
+    engineSubscriptions.push(
+      leaderEngine.subscribeRecovery((event) => {
+        emitRecovery(event);
+        channel?.post({ type: "recovery", event });
+      })
+    );
 
     void leaderEngine.connect();
   }
@@ -268,11 +345,21 @@ export function createCoordinatedSSEClient<Events extends EventMap>(
       // We are the leader: answer snapshot requests from joining followers.
       if (message.type === "hello") {
         channel?.post({ type: "status", status: state.getStatus() });
+        if (lastActivityAt !== undefined) {
+          channel?.post({ type: "activity", timestamp: lastActivityAt });
+        }
         const error = state.getError();
 
         if (error) {
           channel?.post({ type: "error", error: serializeError(error) });
         }
+      }
+
+      if (message.type === "reconnect-request") {
+        void reconnect({ reason: message.reason }).then(
+          () => channel?.post({ type: "reconnect-result", requestId: message.requestId, ok: true }),
+          () => channel?.post({ type: "reconnect-result", requestId: message.requestId, ok: false })
+        );
       }
 
       return;
@@ -292,6 +379,32 @@ export function createCoordinatedSSEClient<Events extends EventMap>(
 
     if (message.type === "error") {
       enqueueFollowerTask(() => state.setError(message.error));
+
+      return;
+    }
+
+    if (message.type === "activity") {
+      enqueueFollowerTask(() => emitActivity(message.timestamp));
+
+      return;
+    }
+
+    if (message.type === "recovery") {
+      enqueueFollowerTask(() => emitRecovery(message.event));
+
+      return;
+    }
+
+    if (message.type === "reconnect-result") {
+      const resolver = reconnectResolvers.get(message.requestId);
+      if (!resolver) {
+        return;
+      }
+      if (message.ok) {
+        resolver.resolve();
+      } else {
+        resolver.reject(new Error("SSE leader reconnect failed"));
+      }
 
       return;
     }
@@ -387,6 +500,76 @@ export function createCoordinatedSSEClient<Events extends EventMap>(
         await handler(parsed.value);
       } catch (cause) {
         state.setError(normalizeError(cause, "handler"));
+      }
+    }
+  }
+
+  async function reconnectLeader(reason: string): Promise<void> {
+    if (!engine) {
+      throw new Error("SSE coordination leader is not available");
+    }
+
+    await engine.reconnect({ reason });
+  }
+
+  async function requestLeaderReconnect(reason: string, timeout?: number): Promise<void> {
+    if (!isActive) {
+      await connect();
+    }
+
+    if (!channel) {
+      throw new Error("SSE coordination channel is not available");
+    }
+
+    const activeChannel = channel;
+    const requestId = `${Date.now()}-${(reconnectRequestCounter += 1)}`;
+
+    return new Promise<void>((resolve, reject) => {
+      let timeoutId: ReturnType<typeof setTimeout> | undefined;
+      const settle = (callback: () => void): void => {
+        if (!reconnectResolvers.delete(requestId)) {
+          return;
+        }
+        if (timeoutId !== undefined) {
+          clearTimeout(timeoutId);
+        }
+        callback();
+      };
+
+      reconnectResolvers.set(requestId, {
+        resolve: () => settle(resolve),
+        reject: (error) => settle(() => reject(error))
+      });
+
+      if (timeout !== undefined) {
+        timeoutId = setTimeout(() => {
+          const resolver = reconnectResolvers.get(requestId);
+          resolver?.reject(new Error(`SSE reconnect request timed out after ${timeout}ms`));
+        }, timeout);
+      }
+
+      activeChannel.post({ type: "reconnect-request", requestId, reason });
+    });
+  }
+
+  function emitActivity(timestamp: number): void {
+    lastActivityAt = timestamp;
+    for (const listener of activityListeners) {
+      try {
+        listener(timestamp);
+      } catch {
+        // activity listener errors must not affect coordination
+      }
+    }
+  }
+
+  function emitRecovery(event: SSERecoveryEvent): void {
+    lastRecovery = event;
+    for (const listener of recoveryListeners) {
+      try {
+        listener(event);
+      } catch {
+        // recovery listener errors must not affect coordination
       }
     }
   }

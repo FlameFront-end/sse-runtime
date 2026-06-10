@@ -15,6 +15,7 @@ import { SSEDevtoolsPanel } from "./sse-devtools-panel";
 
 const EMPTY_SNAPSHOT: RegistrySnapshot = new Map();
 const DEFAULT_Z_INDEX = 99999;
+const DEFAULT_SILENT_TIMEOUT_MS = 60_000;
 
 export type SSEDevtoolsProviderProps = {
   readonly children: ReactNode;
@@ -25,6 +26,7 @@ export type SSEDevtoolsProviderProps = {
   readonly hideToggleButton?: boolean;
   readonly toggleShortcut?: string;
   readonly maxEvents?: number;
+  readonly silentTimeoutMs?: number;
   readonly zIndex?: number;
 };
 
@@ -46,6 +48,7 @@ function ActiveSSEDevtoolsProvider({
   hideToggleButton = false,
   toggleShortcut = "alt+d",
   maxEvents,
+  silentTimeoutMs = DEFAULT_SILENT_TIMEOUT_MS,
   zIndex = DEFAULT_Z_INDEX
 }: ActiveSSEDevtoolsProviderProps): ReactNode {
   const registry = useMemo(() => createDevtoolsRegistry({ maxEvents }), [maxEvents]);
@@ -92,6 +95,7 @@ function ActiveSSEDevtoolsProvider({
         buttonPosition={buttonPosition}
         panelHeight={panelHeight}
         hideToggleButton={hideToggleButton}
+        silentTimeoutMs={silentTimeoutMs}
         zIndex={zIndex}
       />
     </SSEDevtoolsRegistrationContext.Provider>

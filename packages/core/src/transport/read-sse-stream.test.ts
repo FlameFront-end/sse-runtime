@@ -168,6 +168,24 @@ describe("readSSEStream - heartbeat timeout", () => {
     const result = await streamTask;
     expect(result).toBeNull();
   });
+
+  it("reports transport activity for comment-only heartbeat chunks", async () => {
+    const stream = createControlledStream();
+    const onActivity = vi.fn();
+    const streamTask = readSSEStream({
+      stream: stream.readable,
+      signal: new AbortController().signal,
+      createTextDecoder: () => new TextDecoder(),
+      onEvents: async () => undefined,
+      onActivity
+    });
+
+    stream.enqueue(": heartbeat\n\n");
+    await vi.waitFor(() => expect(onActivity).toHaveBeenCalledTimes(1));
+    stream.close();
+
+    await streamTask;
+  });
 });
 
 function createControlledStream(): {
