@@ -9,6 +9,7 @@ import type { SSEConnectionStatus } from "../types/public";
 function createFakeClient(
   overrides: {
     readonly getStatus?: () => SSEConnectionStatus;
+    readonly getLastActivityAt?: () => number | undefined;
     readonly getLastEventAt?: () => number | undefined;
   } = {}
 ): SSEClient {
@@ -17,10 +18,15 @@ function createFakeClient(
     disconnect: vi.fn(),
     reconnect: vi.fn(async () => undefined),
     ensureOpen: vi.fn(async () => true),
+    ensureHealthy: vi.fn(async () => true),
     getError: () => null,
     getStatus: overrides.getStatus ?? (() => "open"),
+    getLastActivityAt: overrides.getLastActivityAt ?? overrides.getLastEventAt ?? (() => undefined),
     getLastEventAt: overrides.getLastEventAt ?? (() => undefined),
+    getLastRecovery: () => undefined,
+    subscribeActivity: () => () => undefined,
     subscribeError: () => () => undefined,
+    subscribeRecovery: () => () => undefined,
     subscribeStatus: () => () => undefined,
     subscribeEvent: () => () => undefined,
     subscribeAnyEvent: () => () => undefined
@@ -45,7 +51,7 @@ describe("attachLifecycleResume", () => {
 
     window.dispatchEvent(new Event("online"));
 
-    expect(client.reconnect).toHaveBeenCalledTimes(1);
+    expect(client.reconnect).toHaveBeenCalledWith({ reason: "online" });
     expect(client.ensureOpen).not.toHaveBeenCalled();
     detach();
   });
@@ -194,6 +200,24 @@ describe("attachLifecycleResume", () => {
     vi.advanceTimersByTime(30_000);
 
     expect(client.ensureOpen).toHaveBeenCalledTimes(1);
+    detach();
+    nowSpy.mockRestore();
+    vi.useRealTimers();
+  });
+
+  it("forces reconnect with a stale-watchdog reason when configured", () => {
+    vi.useFakeTimers();
+    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(0);
+    const client = createFakeClient({ getStatus: () => "open", getLastEventAt: () => 1 });
+    const detach = attachLifecycleResume(client, {
+      strategy: "reconnect",
+      staleTimeoutMs: 60_000
+    });
+
+    nowSpy.mockReturnValue(120_000);
+    vi.advanceTimersByTime(30_000);
+
+    expect(client.reconnect).toHaveBeenCalledWith({ reason: "stale-watchdog" });
     detach();
     nowSpy.mockRestore();
     vi.useRealTimers();

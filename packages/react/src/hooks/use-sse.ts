@@ -2,7 +2,9 @@ import {
   createSSEClient,
   serializeSSEKey,
   type CoordinationRole,
+  type EnsureHealthyOptions,
   type EventMap,
+  type ReconnectRequestOptions,
   type SSEClientOptions
 } from "@flamefrontend/sse-runtime-core";
 import { useCallback, useContext, useEffect, useMemo, useState } from "react";
@@ -86,9 +88,16 @@ export function useSSE<Events extends EventMap>(
 
   const connect = useCallback(() => client.connect(), [client]);
   const disconnect = useCallback(() => client.disconnect(), [client]);
-  const reconnect = useCallback(() => client.reconnect(), [client]);
+  const reconnect = useCallback(
+    (reconnectOptions?: ReconnectRequestOptions) => client.reconnect(reconnectOptions),
+    [client]
+  );
   const ensureOpen = useCallback(
     (ensureOptions?: { readonly timeout?: number }) => client.ensureOpen(ensureOptions),
+    [client]
+  );
+  const ensureHealthy = useCallback(
+    (healthOptions: EnsureHealthyOptions) => client.ensureHealthy(healthOptions),
     [client]
   );
 
@@ -100,6 +109,7 @@ export function useSSE<Events extends EventMap>(
     disconnect,
     reconnect,
     ensureOpen,
+    ensureHealthy,
     client
   };
 }

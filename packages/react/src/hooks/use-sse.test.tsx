@@ -124,7 +124,7 @@ describe("useSSE", () => {
     expect(client.connect).toHaveBeenCalledTimes(1);
   });
 
-  it("exposes the client, ensureOpen, and reconnect from the result", async () => {
+  it("exposes the client, ensureOpen, ensureHealthy, and reconnect from the result", async () => {
     const client = createFakeClient();
     createSSEClient.mockReturnValue(client);
     let captured: ReturnType<typeof useSSE> | undefined;
@@ -140,11 +140,18 @@ describe("useSSE", () => {
 
     expect(captured?.client).toBe(client);
 
-    await captured?.reconnect();
-    expect(client.reconnect).toHaveBeenCalledTimes(1);
+    await captured?.reconnect({ reason: "manual-test" });
+    expect(client.reconnect).toHaveBeenCalledWith({ reason: "manual-test" });
 
     await captured?.ensureOpen({ timeout: 1000 });
     expect(client.ensureOpen).toHaveBeenCalledWith({ timeout: 1000 });
+
+    await captured?.ensureHealthy({ staleAfter: 5000, timeout: 1000, reason: "before-send" });
+    expect(client.ensureHealthy).toHaveBeenCalledWith({
+      staleAfter: 5000,
+      timeout: 1000,
+      reason: "before-send"
+    });
   });
 
   it("recreates the client when enabled changes", async () => {
@@ -229,6 +236,7 @@ function createFakeClient(): {
   readonly disconnect: ReturnType<typeof vi.fn<() => void>>;
   readonly reconnect: ReturnType<typeof vi.fn<() => Promise<void>>>;
   readonly ensureOpen: ReturnType<typeof vi.fn<() => Promise<boolean>>>;
+  readonly ensureHealthy: ReturnType<typeof vi.fn<() => Promise<boolean>>>;
   readonly getError: () => null;
   readonly getStatus: () => SSEConnectionStatus;
   readonly subscribeError: (listener: SSEErrorListener) => () => void;
@@ -251,6 +259,7 @@ function createFakeClient(): {
     disconnect: vi.fn(),
     reconnect: vi.fn(async () => undefined),
     ensureOpen: vi.fn(async () => true),
+    ensureHealthy: vi.fn(async () => true),
     subscribeAnyEvent: vi.fn(() => () => undefined),
     getError: () => error,
     getStatus: () => status,

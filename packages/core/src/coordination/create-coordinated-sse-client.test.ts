@@ -477,6 +477,169 @@ describe("single-tab coordination", () => {
     leader.disconnect();
     follower.disconnect();
   });
+
+  it("lets a follower request a leader reconnect", async () => {
+    const harness = createCoordinationHarness();
+    const leaderTransport = vi.fn(async () => new Response(createControlledStream().readable));
+    const leader = createCoordinatedClient(harness, leaderTransport);
+    const follower = createCoordinatedClient(
+      harness,
+      async () => new Response(createControlledStream().readable)
+    );
+
+    await leader.connect();
+    await waitFor(() => leader.getStatus() === "open");
+    await follower.connect();
+    await waitFor(() => follower.getStatus() === "open");
+
+    await follower.reconnect({ reason: "health-check" });
+
+    expect(leaderTransport).toHaveBeenCalledTimes(2);
+    expect(follower.getStatus()).toBe("open");
+
+    leader.disconnect();
+    follower.disconnect();
+  });
+
+  it("coalesces concurrent follower reconnect requests", async () => {
+    const harness = createCoordinationHarness();
+    const leaderTransport = vi.fn(async () => new Response(createControlledStream().readable));
+    const leader = createCoordinatedClient(harness, leaderTransport);
+    const follower = createCoordinatedClient(
+      harness,
+      async () => new Response(createControlledStream().readable)
+    );
+
+    await leader.connect();
+    await waitFor(() => leader.getStatus() === "open");
+    await follower.connect();
+
+    await Promise.all([
+      follower.reconnect({ reason: "health-check" }),
+      follower.reconnect({ reason: "visible" })
+    ]);
+
+    expect(leaderTransport).toHaveBeenCalledTimes(2);
+
+    leader.disconnect();
+    follower.disconnect();
+  });
+
+  it("coalesces reconnect requests from multiple followers", async () => {
+    const harness = createCoordinationHarness();
+    const leaderTransport = vi.fn(async () => new Response(createControlledStream().readable));
+    const leader = createCoordinatedClient(harness, leaderTransport);
+    const followerA = createCoordinatedClient(
+      harness,
+      async () => new Response(createControlledStream().readable)
+    );
+    const followerB = createCoordinatedClient(
+      harness,
+      async () => new Response(createControlledStream().readable)
+    );
+
+    await leader.connect();
+    await waitFor(() => leader.getStatus() === "open");
+    await followerA.connect();
+    await followerB.connect();
+
+    await Promise.all([
+      followerA.reconnect({ reason: "health-check" }),
+      followerB.reconnect({ reason: "visible" })
+    ]);
+
+    expect(leaderTransport).toHaveBeenCalledTimes(2);
+
+    leader.disconnect();
+    followerA.disconnect();
+    followerB.disconnect();
+  });
+
+  it("forwards byte-level activity from leader to followers", async () => {
+    const harness = createCoordinationHarness();
+    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(1_000);
+    const leaderStream = createControlledStream();
+    const leader = createCoordinatedClient(
+      harness,
+      async () => new Response(leaderStream.readable)
+    );
+    const follower = createCoordinatedClient(
+      harness,
+      async () => new Response(createControlledStream().readable)
+    );
+
+    try {
+      await leader.connect();
+      await follower.connect();
+      nowSpy.mockReturnValue(2_000);
+      leaderStream.enqueue(": heartbeat\n\n");
+      await waitFor(() => follower.getLastActivityAt() === 2_000);
+
+      expect(follower.getLastActivityAt()).toBe(2_000);
+
+      leader.disconnect();
+      follower.disconnect();
+    } finally {
+      nowSpy.mockRestore();
+    }
+  });
+
+  it("rejects a follower health check when the leader reconnect result is lost", async () => {
+    const harness = createCoordinationHarness({ dropReconnectResults: true });
+    const leaderTransport = vi.fn(async () => new Response(createControlledStream().readable));
+    const leader = createCoordinatedClient(harness, leaderTransport);
+    const follower = createCoordinatedClient(
+      harness,
+      async () => new Response(createControlledStream().readable)
+    );
+
+    await leader.connect();
+    await waitFor(() => leader.getStatus() === "open");
+    await follower.connect();
+    await waitFor(() => follower.getStatus() === "open");
+    await new Promise((resolve) => setTimeout(resolve, 1));
+
+    const outcome = await Promise.race([
+      follower.ensureHealthy({ staleAfter: 0, timeout: 5, reason: "health-check" }).then(
+        () => ({ type: "resolved" as const }),
+        (error: unknown) => ({ type: "rejected" as const, message: String(error) })
+      ),
+      new Promise<{ readonly type: "hung" }>((resolve) =>
+        setTimeout(() => resolve({ type: "hung" }), 50)
+      )
+    ]);
+
+    expect(outcome.type).toBe("rejected");
+
+    leader.disconnect();
+    follower.disconnect();
+  });
+
+  it("rejects on timeout and ignores a late leader reconnect result", async () => {
+    const harness = createCoordinationHarness({ delayReconnectResultsMs: 40 });
+    const leaderTransport = vi.fn(async () => new Response(createControlledStream().readable));
+    const leader = createCoordinatedClient(harness, leaderTransport);
+    const follower = createCoordinatedClient(
+      harness,
+      async () => new Response(createControlledStream().readable)
+    );
+
+    await leader.connect();
+    await waitFor(() => leader.getStatus() === "open");
+    await follower.connect();
+    await waitFor(() => follower.getStatus() === "open");
+    await new Promise((resolve) => setTimeout(resolve, 1));
+
+    await expect(
+      follower.ensureHealthy({ staleAfter: 0, timeout: 5, reason: "health-check" })
+    ).rejects.toThrow(/timed out/);
+
+    // Let the delayed reconnect-result arrive at the already-removed resolver.
+    await new Promise((resolve) => setTimeout(resolve, 60));
+
+    leader.disconnect();
+    follower.disconnect();
+  });
 });
 
 function createCoordinatedClient(
@@ -522,7 +685,12 @@ type LockEntry = {
   readonly queue: Waiter[];
 };
 
-function createCoordinationHarness(): CoordinationHarness {
+function createCoordinationHarness(
+  options: {
+    readonly dropReconnectResults?: boolean;
+    readonly delayReconnectResultsMs?: number;
+  } = {}
+): CoordinationHarness {
   const subscribers: Subscriber[] = [];
   const locks = new Map<string, LockEntry>();
   let nextChannelId = 1;
@@ -557,11 +725,27 @@ function createCoordinationHarness(): CoordinationHarness {
 
         return {
           post(message: CoordinationMessage): void {
-            for (const subscriber of [...subscribers]) {
-              if (subscriber.name === name && subscriber.id !== id) {
-                subscriber.listener(message);
-              }
+            if (options.dropReconnectResults && message.type === "reconnect-result") {
+              return;
             }
+
+            const deliver = (): void => {
+              for (const subscriber of [...subscribers]) {
+                if (subscriber.name === name && subscriber.id !== id) {
+                  subscriber.listener(message);
+                }
+              }
+            };
+
+            if (
+              options.delayReconnectResultsMs !== undefined &&
+              message.type === "reconnect-result"
+            ) {
+              setTimeout(deliver, options.delayReconnectResultsMs);
+              return;
+            }
+
+            deliver();
           },
           subscribe(listener: (message: CoordinationMessage) => void): () => void {
             const subscriber: Subscriber = { name, id, listener };

@@ -24,7 +24,9 @@ function createMockClient(initialStatus: SSEConnectionStatus = "closed") {
   return {
     getStatus: () => status,
     getError: () => error,
+    getLastActivityAt: () => undefined,
     getLastEventAt: () => undefined,
+    getLastRecovery: () => undefined,
     getRole: () => role,
     subscribeRole: vi.fn((listener: RoleListener) => {
       roleListeners.add(listener);
@@ -35,6 +37,9 @@ function createMockClient(initialStatus: SSEConnectionStatus = "closed") {
     disconnect: vi.fn(),
     reconnect: vi.fn(async () => undefined),
     ensureOpen: vi.fn(async () => true),
+    ensureHealthy: vi.fn(async () => true),
+    subscribeActivity: vi.fn(() => () => undefined),
+    subscribeRecovery: vi.fn(() => () => undefined),
     subscribeEvent: vi.fn(() => () => undefined),
     subscribeAnyEvent: vi.fn((handler: SSEAnyEventHandler) => {
       anyEventHandlers.add(handler);

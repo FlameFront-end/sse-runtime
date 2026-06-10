@@ -97,8 +97,10 @@ function ConnectionBadge() {
 ## Devtools (optional)
 
 Wrap your app once with `SSEDevtoolsProvider` to get a floating panel that lists
-every active connection, its status, and a live event log. Each `useSSE` call and
-`SSEProvider` inside the tree registers automatically — no manual wiring.
+every active connection, its status, byte-level activity, recovery state, and a live
+event log. It also warns about `Open / silent` connections when no transport activity
+arrives for the configured threshold. Each `useSSE` call and `SSEProvider` inside the
+tree registers automatically — no manual wiring.
 
 ```bash
 npm install @flamefrontend/sse-runtime-devtools

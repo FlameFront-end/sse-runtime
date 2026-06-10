@@ -169,6 +169,76 @@ describe("ensureOpen — local client", () => {
   });
 });
 
+describe("ensureHealthy — local client", () => {
+  it("reconnects an open transport when its activity is stale", async () => {
+    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(1_000);
+    const transport = vi.fn(async () => new Response(createControlledStream().readable));
+    const client = createSSEClient<ChatEvents>({ key: ["chat"], url: "/stream" }, { transport });
+
+    await client.connect();
+    nowSpy.mockReturnValue(121_001);
+
+    const result = await client.ensureHealthy({ staleAfter: 120_000, reason: "health-check" });
+
+    expect(result).toBe(true);
+    expect(transport).toHaveBeenCalledTimes(2);
+    client.disconnect();
+    nowSpy.mockRestore();
+  });
+
+  it("keeps a fresh open transport", async () => {
+    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(1_000);
+    const transport = vi.fn(async () => new Response(createControlledStream().readable));
+    const client = createSSEClient<ChatEvents>({ key: ["chat"], url: "/stream" }, { transport });
+
+    await client.connect();
+    nowSpy.mockReturnValue(2_000);
+
+    const result = await client.ensureHealthy({ staleAfter: 120_000 });
+
+    expect(result).toBe(true);
+    expect(transport).toHaveBeenCalledTimes(1);
+    client.disconnect();
+    nowSpy.mockRestore();
+  });
+
+  it("keeps recovery pending across automatic retry and reports success after the stream opens", async () => {
+    const firstStream = createControlledStream();
+    const recoveredStream = createControlledStream();
+    const transport = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(firstStream.readable))
+      .mockResolvedValueOnce(new Response(null, { status: 503 }))
+      .mockResolvedValueOnce(new Response(recoveredStream.readable));
+    const client = createSSEClient<ChatEvents>(
+      {
+        key: ["chat"],
+        url: "/stream",
+        reconnect: { enabled: true, minDelay: 0, maxDelay: 0 }
+      },
+      { transport, wait: async () => undefined }
+    );
+    const recoveries: Array<{ readonly phase: string; readonly reason: string }> = [];
+    client.subscribeRecovery((event) => {
+      recoveries.push({ phase: event.phase, reason: event.reason });
+    });
+
+    await client.connect();
+    recoveries.length = 0;
+
+    await client.reconnect({ reason: "manual-retry" });
+    await waitFor(() => client.getStatus() === "open" && transport.mock.calls.length === 3);
+
+    expect(recoveries).toEqual([
+      { phase: "requested", reason: "manual-retry" },
+      { phase: "started", reason: "manual-retry" },
+      { phase: "succeeded", reason: "manual-retry" }
+    ]);
+
+    client.disconnect();
+  });
+});
+
 // ---------------------------------------------------------------------------
 // openTimeout
 // ---------------------------------------------------------------------------
